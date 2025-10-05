@@ -7,7 +7,7 @@ echo "=== GitHub Repository Setup ==="
 echo ""
 echo "1. First, create a new repository on GitHub:"
 echo "   - Go to https://github.com/new"
-echo "   - Repository name: LiveLecturesSingle"
+echo "   - Repository name: LiveLectures"
 echo "   - Description: Advanced Notes App with AI LaTeX conversion and audio transcription"
 echo "   - Make it Public (required for GitHub Pages)"
 echo "   - Do NOT initialize with README (we already have one)"
@@ -19,13 +19,13 @@ echo ""
 # The actual commands to run
 cat << 'EOF'
 # Add the GitHub remote (replace 'arizzi' with your username if different)
-git remote add origin https://github.com/arizzi/LiveLecturesSingle.git
+git remote add origin https://github.com/arizzi/LiveLectures.git
 
 # Push the code to GitHub
 git push -u origin main
 
 # The repository should now be available at:
-# https://github.com/arizzi/LiveLecturesSingle
+# https://github.com/arizzi/LiveLectures
 EOF
 
 echo ""
@@ -38,7 +38,7 @@ echo "   - Select 'main' branch and '/ (root)' folder"
 echo "   - Click 'Save'"
 echo ""
 echo "4. Your app will be live at:"
-echo "   https://arizzi.github.io/LiveLecturesSingle"
+echo "   https://arizzi.github.io/LiveLectures"
 echo "   (May take a few minutes to deploy)"
 echo ""
 echo "=== Additional Notes ==="

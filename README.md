@@ -1,4 +1,4 @@
-# Live Lectures Single - Advanced Notes App
+# Live Lectures - Advanced Notes App
 
 🖊️ **A powerful web-based note-taking application with handwriting recognition, LaTeX conversion, and audio transcription.**
 
@@ -17,7 +17,7 @@
 
 ## 🚀 Live Demo
 
-Visit the live application: **[https://arizzi.github.io/LiveLecturesSingle](https://arizzi.github.io/LiveLecturesSingle)**
+Visit the live application: **[https://arizzi.github.io/LiveLectures](https://arizzi.github.io/LiveLectures)**
 
 ## 🛠️ Technology Stack
 
@@ -37,8 +37,8 @@ Visit the live application: **[https://arizzi.github.io/LiveLecturesSingle](http
 ### For Local Development
 1. Clone the repository:
    ```bash
-   git clone https://github.com/arizzi/LiveLecturesSingle.git
-   cd LiveLecturesSingle
+   git clone https://github.com/arizzi/LiveLectures.git
+   cd LiveLectures
    ```
 
 2. Serve the files using any static web server:
