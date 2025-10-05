@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Advanced Notes App</title>
+    <!-- Notes App v2.1 (clean) -->
+    
+    <!-- External Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- MathJax Configuration -->
+    <script>
+        window.MathJax = {
+            loader: {load: ['[tex]/ams', 'output/svg']},
+            tex: {packages: {'[+]': ['ams']}},
+            startup: {
+                ready: () => {
+                    MathJax.startup.defaultReady();
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js"></script>
+    
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="toolbar">
+            <!-- Tools Group -->
+            <div class="toolbar-group">
+                <div class="toolbar-button" id="handToolBtn" data-tool="hand" title="Hand Tool">
+                    <i class="fas fa-hand-paper"></i>
+                </div>
+                <div class="toolbar-button" id="selectToolBtn" data-tool="select" title="Select Tool">
+                    <i class="fas fa-mouse-pointer"></i>
+                </div>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <!-- Drawing Tools Group -->
+            <div class="toolbar-group">
+                <div class="toolbar-button active" id="drawingToolBtn" title="Drawing Tools">
+                    <i class="fas fa-pen"></i>
+                    <span class="dropdown-arrow">▼</span>
+                    <div class="submenu" id="drawingSubmenu">
+                        <div class="submenu-item active" data-tool="pen">
+                            <i class="fas fa-pen"></i>
+                            <span>Pen</span>
+                        </div>
+                        <div class="submenu-item" data-tool="line">
+                            <i class="fas fa-minus"></i>
+                            <span>Line</span>
+                        </div>
+                        <div class="submenu-item" data-tool="circle">
+                            <i class="far fa-circle"></i>
+                            <span>Circle</span>
+                        </div>
+                        <div class="submenu-item" data-tool="rect">
+                            <i class="far fa-square"></i>
+                            <span>Rectangle</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="toolbar-button" id="eraserToolBtn" data-tool="eraser" title="Eraser">
+                    <i class="fas fa-eraser"></i>
+                </div>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <!-- Color and Size -->
+            <div class="color-size-group">
+                <label>Color:</label>
+                <input type="color" id="colorPicker" value="#000000" />
+                <label>Size:</label>
+                <input type="range" id="brushSize" min="1" max="50" value="5" />
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <!-- Edit Actions -->
+            <div class="toolbar-group">
+                <div class="toolbar-button" id="undoBtn" title="Undo (Ctrl+Z)">
+                    <i class="fas fa-undo"></i>
+                </div>
+                <div class="toolbar-button" id="redoBtn" title="Redo (Ctrl+Shift+Z)">
+                    <i class="fas fa-redo"></i>
+                </div>
+                <div class="toolbar-button" id="deleteBtn" title="Delete Selected (Del)">
+                    <i class="fas fa-trash"></i>
+                </div>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <!-- Page/File Actions -->
+            <div class="toolbar-group">
+                <div class="toolbar-button" id="addPageBtn" title="Add Page">
+                    <i class="fas fa-plus"></i>
+                </div>
+                <div class="toolbar-button" id="fileActionsBtn" title="File Actions">
+                    <i class="fas fa-folder"></i>
+                    <span class="dropdown-arrow">▼</span>
+                    <div class="submenu" id="fileSubmenu">
+                        <div class="submenu-item" id="exportJsonBtn">
+                            <i class="fas fa-download"></i>
+                            <span>Export</span>
+                        </div>
+                        <div class="submenu-item" id="importJsonBtn">
+                            <i class="fas fa-upload"></i>
+                            <span>Import</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-separator"></div>
+
+            <!-- AI & View -->
+            <div class="toolbar-group">
+                <div class="toolbar-button" id="convertToLatexBtn" title="Convert to LaTeX">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <div class="toolbar-button" id="transcriptionBtn" title="Toggle Transcription">
+                    <i class="fas fa-microphone"></i>
+                </div>
+                <div class="toolbar-button" id="clearBtn" title="Clear All">
+                    <i class="fas fa-broom"></i>
+                </div>
+                <div class="toolbar-button" id="fullscreenBtn" title="Full Screen">
+                    <i class="fas fa-expand"></i>
+                </div>
+            </div>
+
+            <!-- Settings and Version -->
+            <span class="version-badge">v2.1</span>
+            <div class="toolbar-group">
+                <div class="toolbar-button" id="settingsBtn" title="Settings">
+                    <i class="fas fa-cog"></i>
+                    <span class="dropdown-arrow">▼</span>
+                    <div class="submenu" id="settingsSubmenu">
+                        <div class="submenu-item" id="setApiKeyBtn">
+                            <i class="fas fa-key"></i>
+                            <span>Set API Key</span>
+                        </div>
+                        <div class="submenu-item">
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank">
+                                <i class="fas fa-external-link-alt"></i>
+                                <span>Get API Key</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <input type="file" id="importFileInput" accept="application/json" class="hidden-input" />
+        </div>
+        
+        <div class="content-area">
+            <div class="main-content">
+                <div class="canvas-container">
+                    <canvas id="drawing-canvas"></canvas>
+                    <canvas id="preview-canvas"></canvas>
+                </div>
+            </div>
+            <div class="sidebar" id="sidebar">
+                <div class="resize-handle" id="resizeHandle"></div>
+                <div class="hide-toggle" id="hideToggle">◀</div>
+                <div class="latex-container">
+                    <h3>LaTeX Output</h3>
+                    <div id="ai-status">Click "Convert to LaTeX" to analyze the canvas.</div>
+                    <div id="latex-output"></div>
+                    <button id="addLatexToCanvasBtn" style="display: none; margin-top: 10px;">Add to Canvas</button>
+                </div>
+                <div class="transcription-display">
+                    <h3>Audio Transcription</h3>
+                    <div id="transcription-status">Transcription is stopped.</div>
+                    <div id="transcription-output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Scripts -->
+    <script src="utils.js"></script>
+    <script src="drawing.js"></script>
+    <script src="toolbar.js"></script>
+    <script src="latex.js"></script>
+    <script src="transcription.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
