@@ -96,14 +96,16 @@ class PDFExporter {
             console.log(`Exporting ${numPages} pages to PDF`);
             console.log(`Found ${drawingEngine.drawnObjects.length} objects to export`);
             
-            // Debug: log object types
-            const objectTypes = {};
-            drawingEngine.drawnObjects.forEach(obj => {
-                objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
-            });
-            console.log('Object types:', objectTypes);
-            
-            for (let pageIndex = 0; pageIndex < numPages; pageIndex++) {
+        // Debug: log object types
+        const objectTypes = {};
+        drawingEngine.drawnObjects.forEach(obj => {
+            objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
+            // Log LaTeX object positions
+            if (obj.type === 'latex') {
+                console.log(`LaTeX object ${obj.id} at position (${obj.x}, ${obj.y}), size: ${obj.svgWidth || 'unknown'}x${obj.svgHeight || 'unknown'}`);
+            }
+        });
+        console.log('Object types:', objectTypes);            for (let pageIndex = 0; pageIndex < numPages; pageIndex++) {
                 if (pageIndex > 0) {
                     pdf.addPage();
                 }
@@ -120,14 +122,25 @@ class PDFExporter {
 
                 // Calculate page offset
                 const pageOffsetY = pageIndex * drawingEngine.A4_HEIGHT;
+                console.log(`Processing page ${pageIndex + 1}, offset: ${pageOffsetY}`);
 
                 // Draw objects that are on this page
-                for (const obj of drawingEngine.drawnObjects) {
-                    if (this.isObjectOnPage(obj, pageOffsetY, drawingEngine.A4_HEIGHT)) {
-                        // Create a copy of the object with adjusted coordinates
-                        const adjustedObj = this.adjustObjectForPage(obj, pageOffsetY);
-                        await this.drawObjectToPDF(pageCtx, adjustedObj);
-                    }
+                const objectsOnPage = drawingEngine.drawnObjects.filter(obj => 
+                    this.isObjectOnPage(obj, pageOffsetY, drawingEngine.A4_HEIGHT)
+                );
+                console.log(`Found ${objectsOnPage.length} objects on page ${pageIndex + 1}`);
+                
+                // Summary of object types on this page
+                const pageObjectTypes = {};
+                objectsOnPage.forEach(obj => {
+                    pageObjectTypes[obj.type] = (pageObjectTypes[obj.type] || 0) + 1;
+                });
+                console.log(`Page ${pageIndex + 1} object types:`, pageObjectTypes);
+                
+                for (const obj of objectsOnPage) {
+                    // Create a copy of the object with adjusted coordinates
+                    const adjustedObj = this.adjustObjectForPage(obj, pageOffsetY);
+                    await this.drawObjectToPDF(pageCtx, adjustedObj);
                 }
 
                 // Convert canvas to image and add to PDF
@@ -151,24 +164,40 @@ class PDFExporter {
     async ensureLatexRendered(drawingEngine) {
         // Find all LaTeX objects and ensure they are rendered
         const latexObjects = drawingEngine.drawnObjects.filter(obj => obj.type === 'latex');
+        console.log(`Found ${latexObjects.length} LaTeX objects to render`);
         
         if (latexObjects.length === 0) return;
+        
+        // Log details about each LaTeX object
+        latexObjects.forEach((obj, index) => {
+            console.log(`LaTeX object ${index}:`, {
+                id: obj.id,
+                latex: obj.latex,
+                hasRenderedSvg: !!obj.renderedSvg,
+                isRendering: obj.isRendering,
+                x: obj.x,
+                y: obj.y
+            });
+        });
         
         // Render all LaTeX objects
         const renderPromises = latexObjects.map(obj => {
             return new Promise((resolve) => {
                 if (obj.renderedSvg) {
+                    console.log(`LaTeX object ${obj.id} already rendered`);
                     resolve();
                     return;
                 }
                 
                 // Use the LatexRenderer to render the object
                 if (window.LatexRenderer) {
+                    console.log(`Rendering LaTeX object ${obj.id}`);
                     window.LatexRenderer.renderLatexObject(obj);
                     
                     // Wait for rendering to complete
                     const checkRendered = () => {
                         if (obj.renderedSvg || !obj.isRendering) {
+                            console.log(`LaTeX object ${obj.id} rendering completed, hasRenderedSvg: ${!!obj.renderedSvg}`);
                             resolve();
                         } else {
                             setTimeout(checkRendered, 100);
@@ -176,6 +205,7 @@ class PDFExporter {
                     };
                     checkRendered();
                 } else {
+                    console.warn('LatexRenderer not available');
                     resolve();
                 }
             });
@@ -193,7 +223,14 @@ class PDFExporter {
         const pageTop = pageOffsetY;
         const pageBottom = pageOffsetY + pageHeight;
         
-        return bounds.maxY >= pageTop && bounds.minY <= pageBottom;
+        const intersects = bounds.maxY >= pageTop && bounds.minY <= pageBottom;
+        
+        // Debug output for problematic objects
+        if (obj.type === 'latex' && !intersects) {
+            console.log(`LaTeX object ${obj.id} NOT on page (${pageTop}-${pageBottom}):`, bounds);
+        }
+        
+        return intersects;
     }
 
     adjustObjectForPage(obj, pageOffsetY) {
@@ -202,10 +239,13 @@ class PDFExporter {
         
         switch (obj.type) {
             case 'freehand':
-                adjustedObj.points = obj.points.map(point => ({
-                    ...point,
-                    y: point.y - pageOffsetY
-                }));
+            case 'path':
+                if (adjustedObj.points) {
+                    adjustedObj.points = obj.points.map(point => ({
+                        ...point,
+                        y: point.y - pageOffsetY
+                    }));
+                }
                 break;
                 
             case 'line':
@@ -213,13 +253,39 @@ class PDFExporter {
             case 'circle':
                 adjustedObj.startY = (obj.startY || 0) - pageOffsetY;
                 adjustedObj.endY = (obj.endY || 0) - pageOffsetY;
-                adjustedObj.y = (obj.y || 0) - pageOffsetY;
+                if (obj.y !== undefined) {
+                    adjustedObj.y = obj.y - pageOffsetY;
+                }
                 break;
                 
             case 'text':
-            case 'latex':
                 adjustedObj.y = obj.y - pageOffsetY;
                 break;
+                
+            case 'latex':
+                // LaTeX objects use startX/startY, endX/endY format
+                adjustedObj.startY = (obj.startY || 0) - pageOffsetY;
+                adjustedObj.endY = (obj.endY || 0) - pageOffsetY;
+                // Also set x,y for compatibility
+                adjustedObj.x = obj.startX || 0;
+                adjustedObj.y = (obj.startY || 0) - pageOffsetY;
+                break;
+                
+            case 'timestamp':
+                adjustedObj.y = (obj.y || 0) - pageOffsetY;
+                break;
+                
+            default:
+                // Generic fallback
+                if (obj.y !== undefined) {
+                    adjustedObj.y = obj.y - pageOffsetY;
+                }
+                if (obj.startY !== undefined) {
+                    adjustedObj.startY = obj.startY - pageOffsetY;
+                }
+                if (obj.endY !== undefined) {
+                    adjustedObj.endY = obj.endY - pageOffsetY;
+                }
         }
         
         return adjustedObj;
@@ -230,12 +296,21 @@ class PDFExporter {
         
         switch (obj.type) {
             case 'freehand':
-                obj.points.forEach(point => {
-                    minX = Math.min(minX, point.x);
-                    minY = Math.min(minY, point.y);
-                    maxX = Math.max(maxX, point.x);
-                    maxY = Math.max(maxY, point.y);
-                });
+            case 'path':
+                if (obj.points && obj.points.length > 0) {
+                    obj.points.forEach(point => {
+                        minX = Math.min(minX, point.x);
+                        minY = Math.min(minY, point.y);
+                        maxX = Math.max(maxX, point.x);
+                        maxY = Math.max(maxY, point.y);
+                    });
+                } else {
+                    // Fallback if no points
+                    minX = obj.x || 0;
+                    minY = obj.y || 0;
+                    maxX = minX + 10;
+                    maxY = minY + 10;
+                }
                 break;
                 
             case 'line':
@@ -264,11 +339,28 @@ class PDFExporter {
                 break;
                 
             case 'text':
-            case 'latex':
                 minX = obj.x;
                 minY = obj.y;
-                maxX = obj.x + (obj.width || 100);
-                maxY = obj.y + (obj.height || 20);
+                // Use actual rendered dimensions if available
+                const textWidth = obj.width || 100;
+                const textHeight = obj.height || 20;
+                maxX = obj.x + textWidth;
+                maxY = obj.y + textHeight;
+                break;
+                
+            case 'latex':
+                // LaTeX objects use startX/startY, endX/endY format
+                minX = obj.startX || 0;
+                minY = obj.startY || 0;
+                maxX = obj.endX || (minX + (obj.svgWidth || 100));
+                maxY = obj.endY || (minY + (obj.svgHeight || 30));
+                break;
+                
+            case 'timestamp':
+                minX = obj.x || 0;
+                minY = obj.y || 0;
+                maxX = minX + (obj.width || 100);
+                maxY = minY + (obj.height || 20);
                 break;
                 
             default:
@@ -316,6 +408,7 @@ class PDFExporter {
         
         switch (obj.type) {
             case 'freehand':
+            case 'path':
                 this.drawFreehandToPDF(ctx, obj);
                 break;
             case 'line':
@@ -333,6 +426,11 @@ class PDFExporter {
             case 'latex':
                 await this.drawLatexToPDF(ctx, obj);
                 break;
+            case 'timestamp':
+                this.drawTimestampToPDF(ctx, obj);
+                break;
+            default:
+                console.warn(`Unknown object type for PDF: ${obj.type}`);
         }
         
         ctx.restore();
@@ -354,6 +452,15 @@ class PDFExporter {
         }
         
         ctx.stroke();
+    }
+
+    drawTimestampToPDF(ctx, obj) {
+        // Draw timestamp as text
+        ctx.fillStyle = obj.color || '#666666';
+        ctx.font = `${obj.fontSize || 12}px ${obj.fontFamily || 'Arial'}`;
+        
+        const text = obj.text || obj.timestamp || 'Timestamp';
+        ctx.fillText(text, obj.x || 0, (obj.y || 0) + (obj.fontSize || 12));
     }
 
     drawLineToPDF(ctx, obj) {
@@ -397,43 +504,67 @@ class PDFExporter {
     }
 
     async drawLatexToPDF(ctx, obj) {
+        console.log('Drawing LaTeX object to PDF:', obj.id);
+        
+        // For LaTeX objects, use startX/startY as the position
+        const x = obj.x !== undefined ? obj.x : obj.startX || 0;
+        const y = obj.y !== undefined ? obj.y : obj.startY || 0;
+        
+        // Use the bounding box dimensions, NOT the SVG dimensions
+        const targetWidth = (obj.endX - obj.startX) || 100;
+        const targetHeight = (obj.endY - obj.startY) || 30;
+        
+        console.log(`LaTeX ${obj.id} position: (${x}, ${y}), target size: ${targetWidth}x${targetHeight}`);
+        console.log(`LaTeX ${obj.id} SVG native size: ${obj.svgWidth}x${obj.svgHeight}`);
+        
         // Check if we have rendered SVG for this LaTeX object
         if (obj.renderedSvg) {
+            console.log('Found rendered SVG for LaTeX object', obj.id);
             try {
-                // Convert SVG to image and draw it
-                const imageData = await this.svgToImageData(obj.renderedSvg, obj.svgWidth || 100, obj.svgHeight || 50);
-                ctx.drawImage(imageData, obj.x, obj.y, obj.svgWidth || 100, obj.svgHeight || 50);
+                // Render SVG directly at the target size with high DPI
+                const imageData = await this.svgToImageData(obj.renderedSvg, targetWidth, targetHeight);
+                console.log('Successfully converted SVG to target size for LaTeX', obj.id);
+                
+                // Draw at the target size (no additional scaling needed)
+                ctx.drawImage(imageData, x, y, targetWidth, targetHeight);
                 return;
             } catch (error) {
                 console.warn('Failed to render LaTeX SVG to PDF:', error);
             }
+        } else {
+            console.log('No rendered SVG found for LaTeX object', obj.id);
         }
         
         // Fallback: draw placeholder box with LaTeX text
+        console.log('Drawing LaTeX fallback placeholder for', obj.id);
         ctx.strokeStyle = '#cccccc';
         ctx.fillStyle = '#f0f0f0';
         ctx.lineWidth = 1;
         
-        const width = obj.width || obj.svgWidth || 100;
-        const height = obj.height || obj.svgHeight || 30;
-        
-        ctx.fillRect(obj.x, obj.y, width, height);
-        ctx.strokeRect(obj.x, obj.y, width, height);
+        ctx.fillRect(x, y, targetWidth, targetHeight);
+        ctx.strokeRect(x, y, targetWidth, targetHeight);
         
         // Draw LaTeX indicator
         ctx.fillStyle = '#666666';
         ctx.font = '12px Arial';
-        ctx.fillText('LaTeX: ' + (obj.latex || '').substring(0, 20), obj.x + 5, obj.y + 15);
+        ctx.fillText('LaTeX: ' + (obj.latex || '').substring(0, 20), x + 5, y + 15);
     }
 
-    async svgToImageData(svgString, width, height) {
+    async svgToImageData(svgString, targetWidth, targetHeight) {
         return new Promise((resolve, reject) => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
-            // Set canvas size
-            canvas.width = width;
-            canvas.height = height;
+            // Use high DPI for crisp rendering (2x for retina-like quality)
+            const dpi = 2;
+            const canvasWidth = targetWidth * dpi;
+            const canvasHeight = targetHeight * dpi;
+            
+            // Set canvas size at high DPI
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            console.log(`Rendering SVG directly at target size: ${targetWidth}x${targetHeight} @ ${dpi}x DPI = ${canvasWidth}x${canvasHeight}`);
             
             // Create image from SVG
             const img = new Image();
@@ -441,7 +572,11 @@ class PDFExporter {
             const url = URL.createObjectURL(svgBlob);
             
             img.onload = function() {
-                ctx.drawImage(img, 0, 0, width, height);
+                // Clear canvas with transparent background
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                
+                // Draw the SVG directly at the target size with high DPI
+                ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight);
                 URL.revokeObjectURL(url);
                 resolve(canvas);
             };
