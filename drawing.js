@@ -94,11 +94,24 @@ class DrawingEngine {
     }
 
     resizeCanvases() {
+        // Force a reflow to ensure accurate measurements on mobile
+        this.canvasContainer.style.display = 'none';
+        this.canvasContainer.offsetHeight; // Trigger reflow
+        this.canvasContainer.style.display = '';
+        
         const { width, height } = this.canvasContainer.getBoundingClientRect();
         
+        // On mobile, ensure we're using the full available space
+        const actualWidth = Math.max(width, this.canvasContainer.clientWidth);
+        const actualHeight = Math.max(height, this.canvasContainer.clientHeight);
+        
         // Set canvas width to container width, but use A4 height for pages
-        this.previewCanvas.width = width;
-        this.previewCanvas.height = height;
+        this.previewCanvas.width = actualWidth;
+        this.previewCanvas.height = actualHeight;
+        
+        // Set canvas display size to match
+        this.previewCanvas.style.width = actualWidth + 'px';
+        this.previewCanvas.style.height = actualHeight + 'px';
         
         // Initialize main canvas with A4 dimensions including margins and start with 2 pages
         if (!this.canvas.width) {

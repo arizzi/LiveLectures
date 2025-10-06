@@ -56,10 +56,32 @@ class NotesApp {
         
         this.drawingEngine.initializeCanvases(canvas, previewCanvas, canvasContainer);
         
-        // Setup resize observer
+        // Setup resize observer with mobile-specific handling
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            this.drawingEngine.resizeCanvases();
+            // Debounce resize events, especially important on mobile
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.drawingEngine.resizeCanvases();
+            }, 150);
         });
+        
+        // Handle mobile viewport changes (address bar hiding/showing)
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                this.drawingEngine.resizeCanvases();
+            }, 300);
+        });
+        
+        // Additional mobile-specific viewport handling
+        if ('visualViewport' in window) {
+            window.visualViewport.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    this.drawingEngine.resizeCanvases();
+                }, 100);
+            });
+        }
     }
 
     setupEventHandlers() {
