@@ -186,6 +186,14 @@ class DrawingEngine {
         this.canvas.width = this.CANVAS_WIDTH;
         this.canvas.height = (this.A4_HEIGHT + this.PAGE_SPACING) * 2 + this.PAGE_MARGIN;
         
+        // Ensure stacking order: drawing canvas below preview canvas
+        try {
+            this.canvas.style.zIndex = '0';
+            this.previewCanvas.style.zIndex = '1';
+        } catch (err) {
+            // ignore
+        }
+
         this.resizeCanvases();
     }
 
@@ -204,10 +212,14 @@ class DrawingEngine {
         // Set canvas width to container width, but use A4 height for pages
         this.previewCanvas.width = actualWidth;
         this.previewCanvas.height = actualHeight;
-        
-        // Set canvas display size to match
+
+        // Set preview canvas display size to match container (CSS pixels)
         this.previewCanvas.style.width = actualWidth + 'px';
         this.previewCanvas.style.height = actualHeight + 'px';
+
+        // Do not force CSS width/height on the main canvas here to avoid altering
+        // its internal aspect ratio. The canvas internal size (this.canvas.width/height)
+        // controls drawing resolution; if needed we adjust those explicitly elsewhere.
         
         // Initialize main canvas with A4 dimensions including margins and start with 2 pages
         if (!this.canvas.width) {
@@ -341,14 +353,51 @@ class DrawingEngine {
 
         if (obj.type === 'path') {
             if (obj.points.length > 1) {
-                for (let i = 1; i < obj.points.length; i++) {
-                    const p1 = obj.points[i - 1];
-                    const p2 = obj.points[i];
+                // If this is a highlighter stroke, draw the whole path once with
+                // composite/alpha applied a single time to avoid repeated darkening
+                if (obj.tool === 'highlighter' || obj.blend === 'multiply' || obj.blend === 'source-over') {
+                    let prevComposite = null;
+                    let prevAlpha = null;
+                    try {
+                        prevComposite = ctx.globalCompositeOperation;
+                        prevAlpha = ctx.globalAlpha;
+                        ctx.globalCompositeOperation = obj.blend || 'source-over';
+                        ctx.globalAlpha = (typeof obj.alpha === 'number') ? obj.alpha : 0.45;
+                    } catch (err) {
+                        // ignore if not supported
+                    }
+
                     ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineWidth = obj.size * (p1.pressure > 0 ? p1.pressure : 0.5);
-                    ctx.lineTo(p2.x, p2.y);
+                    // Start from first point
+                    const p0 = obj.points[0];
+                    ctx.moveTo(p0.x, p0.y);
+                    for (let i = 1; i < obj.points.length; i++) {
+                        const p = obj.points[i];
+                        ctx.lineWidth = obj.size * (p.pressure > 0 ? p.pressure : 0.5);
+                        ctx.lineTo(p.x, p.y);
+                    }
                     ctx.stroke();
+
+                    // restore composite/alpha
+                    if (prevComposite !== null) {
+                        try {
+                            ctx.globalCompositeOperation = prevComposite;
+                            ctx.globalAlpha = prevAlpha;
+                        } catch (err) {
+                            // ignore
+                        }
+                    }
+                } else {
+                    // Fallback: draw per segment (legacy behavior)
+                    for (let i = 1; i < obj.points.length; i++) {
+                        const p1 = obj.points[i - 1];
+                        const p2 = obj.points[i];
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineWidth = obj.size * (p1.pressure > 0 ? p1.pressure : 0.5);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
                 }
             }
         } else {
@@ -523,12 +572,24 @@ class DrawingEngine {
 
     // Render all page backgrounds and objects into the provided 2D context
     renderAllToContext(ctx) {
-        // Draw page background similar to redrawAll but without transforms
+        // Apply same view transform as on-screen rendering so stroke widths and
+        // positions match the preview. This ensures final rendering doesn't
+        // appear too thin when the viewScale is different from 1.
         ctx.save();
+
+        // Clear and fill background in canvas pixel coordinates
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = this.backgroundColor;
         ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        const totalCanvasHeight = this.canvas.height;
+        // Apply view transform (world -> screen) so drawObject uses same scale
+        ctx.setTransform(
+            this.viewScale, 0, 0, this.viewScale,
+            -this.viewOffsetX * this.viewScale,
+            -this.viewOffsetY * this.viewScale
+        );
+
+        const totalCanvasHeight = this.canvas.height / this.viewScale + this.viewOffsetY;
         const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
         for (let i = 0; i < numPages; i++) {
             const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
@@ -539,12 +600,12 @@ class DrawingEngine {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
             ctx.strokeStyle = '#d0d0d0';
-            ctx.lineWidth = 1;
+            ctx.lineWidth = 1 / this.viewScale; // keep border hairline consistent
             ctx.strokeRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
             ctx.restore();
         }
 
-        // Draw objects in world coordinates (no view transform)
+        // Draw objects in world coordinates (view transform applied)
         this.drawnObjects.forEach(obj => {
             this.drawObject(ctx, obj);
         });
@@ -1245,7 +1306,7 @@ class DrawingEngine {
             }
         }
         console.log(`Scribble deleter check: width=${width.toFixed(1)}, height=${height.toFixed(1)}, coverage=${(coverage*100).toFixed(1)}%, inversions=${inversions}`);
-        if (inversions < 6) return false;
+        if (inversions < 4) return false;
         return true;
     }
 

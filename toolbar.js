@@ -14,6 +14,7 @@ class ToolbarManager {
             rect: 'far fa-square',
             eraser: 'fas fa-eraser'
             , 'stroke-deleter': 'fas fa-cut'
+            , highlighter: 'fas fa-highlighter'
             , 'flood-fill': 'fas fa-fill-drip'
         };
 
@@ -525,7 +526,7 @@ class ToolbarManager {
         }
 
         // Update main drawing tool button icon and active state
-        if (['pen', 'line', 'circle', 'rect'].includes(tool)) {
+        if (['pen', 'line', 'circle', 'rect', 'highlighter'].includes(tool)) {
             this.elements.drawingToolBtn.classList.add('active');
             this.elements.drawingToolBtn.querySelector('i').className = this.toolIcons[tool];
         } else {

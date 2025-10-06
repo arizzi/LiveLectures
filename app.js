@@ -371,17 +371,41 @@ class NotesApp {
         de.shapeStartX = coords.x;
         de.shapeStartY = coords.y;
 
-        if (tool === 'pen' || tool === 'eraser') {
-            const color = tool === 'eraser' ? '#FFFFFF' : this.toolbarManager.getColorValue();
-            const size = tool === 'eraser' ? 30 : this.toolbarManager.getBrushSize();
-            const pressure = tool === 'eraser' ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
+        if (tool === 'pen' || tool === 'eraser' || tool === 'highlighter') {
+            let color, size;
+            if (tool === 'eraser') {
+                color = '#FFFFFF';
+                size = 30;
+            } else if (tool === 'highlighter') {
+                // For highlighter we want a semi-transparent color with larger thickness
+                const base = this.toolbarManager.getColorValue() || '#ffff00';
+                // store color as hex in object, and also set alpha and blend metadata
+                color = base;
+                size = Math.max(8, Math.round(this.toolbarManager.getBrushSize() * 1.6));
+            } else {
+                color = this.toolbarManager.getColorValue();
+                size = this.toolbarManager.getBrushSize();
+            }
 
-            de.currentPath = de.addObject({
+            const pressure = (tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
+
+            const obj = {
                 type: 'path',
                 points: [{ ...coords, pressure }],
                 color,
                 size
-            });
+            };
+
+            if (tool === 'highlighter') {
+                // indicate highlighter-specific rendering: alpha and blend mode
+                obj.tool = 'highlighter';
+                obj.alpha = 0.45; // default alpha for highlighter strokes
+                // Use source-over to avoid multiplicative darkening on overlaps;
+                // drawing the whole stroke once minimizes visible accumulation.
+                obj.blend = 'source-over';
+            }
+
+            de.currentPath = de.addObject(obj);
             console.log(`Started ${tool} stroke with size ${size} at`, coords);
 
             // Start pen idle detection: set a timer relative to the LAST point added.
@@ -451,7 +475,7 @@ class NotesApp {
         const constrainedCoords = de.isWithinPageBounds(coords.x, coords.y) ? 
             coords : de.constrainToPageBounds(coords.x, coords.y);
 
-        if ((tool === 'pen' || tool === 'eraser' || de.isErasing) && de.currentPath) {
+    if ((tool === 'pen' || tool === 'eraser' || tool === 'highlighter' || de.isErasing) && de.currentPath) {
             const pressure = (de.isErasing || tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
             de.currentPath.points.push({ ...constrainedCoords, pressure });
 
