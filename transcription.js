@@ -7,12 +7,21 @@ class TranscriptionManager {
         this.recognition = null;
         this.isListening = false;
         this.isSupported = false;
+        this.lastSpeechTime = Date.now();
+        this.pauseThreshold = 2000; // 2 seconds for line break
 
         this.elements = {
             status: document.getElementById('transcription-status'),
-            output: document.getElementById('transcription-output'),
+            finished: document.getElementById('transcription-finished'),
+            interim: document.getElementById('transcription-interim'),
             container: document.querySelector('.transcription-display')
         };
+
+        // Check if all required elements exist
+        if (!this.elements.finished || !this.elements.interim) {
+            console.error('Transcription elements not found. Make sure the HTML structure is correct.');
+            return;
+        }
 
         this.initializeSpeechRecognition();
     }
@@ -76,6 +85,12 @@ class TranscriptionManager {
        Recognition Result Handling
        ========================================================================== */
     handleRecognitionResult(event) {
+        // Safety check
+        if (!this.elements.finished || !this.elements.interim) {
+            console.error('Transcription elements not available');
+            return;
+        }
+
         let interim = '';
         let final = '';
 
@@ -87,23 +102,52 @@ class TranscriptionManager {
             }
         }
 
-        // Add final results to the output
+        // Handle final results
         if (final.trim()) {
-            this.elements.output.innerHTML += final.trim() + ' ';
+            const currentTime = Date.now();
+            const timeSinceLastSpeech = currentTime - this.lastSpeechTime;
+          //  console.log(`Time since last speech: ${timeSinceLastSpeech}ms vs threshold ${this.pauseThreshold}ms diff ${timeSinceLastSpeech - this.pauseThreshold}ms`);
+            // Add line break if there was a long pause
+            if (timeSinceLastSpeech > this.pauseThreshold && this.elements.finished.innerHTML.trim()) {
+                console.log(`Pause detected: ${timeSinceLastSpeech}ms > ${this.pauseThreshold}ms - Adding line break`);
+                this.elements.finished.innerHTML += '<br>';
+            }
+            
+            // Add the final text to the finished container (escape HTML)
+            const escapedText = this.escapeHtml(final.trim());
+            this.elements.finished.innerHTML += escapedText + ' ';
+            
+            // Clear interim container since text is now final
+            this.elements.interim.textContent = '';
+            
+            this.lastSpeechTime = currentTime;
         }
 
-        // Update or create interim span for interim results
-        let interimSpan = this.elements.output.querySelector('.interim');
-        if (!interimSpan) {
-            interimSpan = document.createElement('span');
-            interimSpan.className = 'interim';
-            interimSpan.style.color = 'grey';
-            this.elements.output.appendChild(interimSpan);
+        // Handle interim results
+        if (interim.trim()) {
+           // console.log(`Interim detected: "${interim.trim()}"`);
+            this.elements.interim.textContent = interim.trim();
+            // DON'T update lastSpeechTime for interim - only for final results
+        } else if (!final.trim()) {
+            console.log(`No interim detected`);
+            // Clear interim if no speech detected
+            this.elements.interim.textContent = '';
+            // Don't update lastSpeechTime here - preserve the pause timing
         }
-        interimSpan.textContent = interim;
 
         // Auto-scroll to bottom
-        this.elements.container.scrollTop = this.elements.container.scrollHeight;
+        if (this.elements.container) {
+            this.elements.container.scrollTop = this.elements.container.scrollHeight;
+        }
+    }
+
+    /* ==========================================================================
+       Utility Methods
+       ========================================================================== */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     /* ==========================================================================
@@ -169,22 +213,34 @@ class TranscriptionManager {
        Transcription Management
        ========================================================================== */
     clearTranscription() {
-        this.elements.output.innerHTML = '';
+        this.elements.finished.innerHTML = '';
+        this.elements.interim.textContent = '';
     }
 
     getTranscriptionText() {
-        // Get text without interim results
-        const output = this.elements.output.cloneNode(true);
-        const interimSpan = output.querySelector('.interim');
-        if (interimSpan) {
-            interimSpan.remove();
-        }
-        return output.textContent.trim();
+        // Get only the finished text (not interim) and preserve line breaks
+        return this.elements.finished.textContent.trim();
     }
 
     setLanguage(language) {
         if (this.recognition) {
             this.recognition.lang = language;
+        }
+    }
+
+    setPauseThreshold(milliseconds) {
+        this.pauseThreshold = milliseconds;
+        console.log(`Pause threshold set to ${milliseconds}ms`);
+    }
+
+    getPauseThreshold() {
+        return this.pauseThreshold;
+    }
+
+    // Test method - adds a manual line break
+    addManualLineBreak() {
+        if (this.elements.finished.innerHTML.trim()) {
+            this.elements.finished.innerHTML += '<br>';
         }
     }
 
@@ -208,6 +264,14 @@ class TranscriptionManager {
 
     getCurrentLanguage() {
         return this.recognition ? this.recognition.lang : null;
+    }
+
+    getConfiguration() {
+        return {
+            language: this.getCurrentLanguage(),
+            pauseThreshold: this.pauseThreshold,
+            isListening: this.isListening
+        };
     }
 
     /* ==========================================================================
@@ -246,7 +310,10 @@ class TranscriptionManager {
         }
         
         if (state.transcriptionText) {
-            this.elements.output.innerHTML = state.transcriptionText;
+            // Escape the text and replace newlines with <br> tags
+            const escapedText = this.escapeHtml(state.transcriptionText).replace(/\n/g, '<br>');
+            this.elements.finished.innerHTML = escapedText;
+            this.elements.interim.textContent = '';
         }
 
         // Don't restore listening state automatically for privacy/security reasons

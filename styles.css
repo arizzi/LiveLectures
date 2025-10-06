@@ -361,9 +361,55 @@ html, body {
     margin-bottom: 10px;
 }
 
-#transcription-output {
+#transcription-finished {
     white-space: pre-wrap;
     word-wrap: break-word;
+    line-height: 1.4;
+    margin-bottom: 5px;
+    overflow-wrap: break-word;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+#transcription-interim {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.4;
+    color: #666;
+    font-style: italic;
+    border-left: 3px solid #007bff;
+    padding-left: 8px;
+    margin-left: 5px;
+    background-color: #f8f9fa;
+    border-radius: 0 4px 4px 0;
+    overflow-wrap: break-word;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+    min-height: 1.4em;
+    opacity: 0.8;
+}
+
+/* Mobile and tablet specific improvements */
+@media (max-width: 768px) {
+    .transcription-display {
+        max-height: 150px;
+        padding: 10px;
+    }
+    
+    #transcription-finished,
+    #transcription-interim {
+        font-size: 14px;
+        line-height: 1.3;
+    }
+    
+    #transcription-interim {
+        padding-left: 6px;
+        margin-left: 3px;
+    }
 }
 
 /* ==========================================================================
