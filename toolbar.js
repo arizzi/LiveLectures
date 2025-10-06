@@ -171,8 +171,29 @@ class ToolbarManager {
 
         // LaTeX conversion
         this.elements.convertToLatexBtn.addEventListener('click', () => {
-            if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
-                window.LatexRenderer.convertToLatex();
+            // Check if auto-formula mode is enabled
+            const drawingEngine = window.app?.drawingEngine;
+            if (drawingEngine && drawingEngine.autoFormulaEnabled) {
+                // In auto-formula mode, treat manual button as immediate trigger
+                console.log('🪄 Manual LaTeX button clicked in auto-formula mode');
+                
+                // Check if we have auto-formula strokes to convert
+                if (drawingEngine.autoFormulaStrokeIds.size > 0) {
+                    console.log(`🚀 Triggering auto-formula with ${drawingEngine.autoFormulaStrokeIds.size} tracked strokes`);
+                    drawingEngine.triggerAutoFormula('manual_button');
+                } else {
+                    console.log('📝 No auto-formula strokes tracked, falling back to normal manual conversion');
+                    // Fall back to normal manual conversion if no auto-formula strokes
+                    if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
+                        window.LatexRenderer.convertToLatex();
+                    }
+                }
+            } else {
+                // Normal manual conversion
+                if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
+                    console.log('🪄 Manual LaTeX conversion (normal mode)');
+                    window.LatexRenderer.convertToLatex();
+                }
             }
         });
 

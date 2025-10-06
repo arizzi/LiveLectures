@@ -22,7 +22,7 @@ class DrawingEngine {
         this.autoFormulaStartTime = null;
         this.lastStrokeTime = null; // Track time of last stroke for timeout calculation
         this.autoFormulaTimeout = null;
-        this.autoFormulaIdleTime = 2000; // 8 seconds of idle time (increased)
+        this.autoFormulaIdleTime = 5000; // milli  seconds of idle time (increased)
         this.lastStrokeY = null;
         this.newLineThreshold = 80; // pixels for detecting new line (increased)
         this.lastScrollY = 0;
@@ -485,13 +485,23 @@ class DrawingEngine {
                 strokeY = obj.points[0].y;
             }
             
+            // Check for new line BEFORE adding current stroke to tracking
+            const shouldTriggerNewLine = this.shouldTriggerNewLine(strokeY);
+            
+            if (shouldTriggerNewLine) {
+                // Trigger with current strokes (excluding this new line stroke)
+                console.log(`📏 New line detected! Triggering before adding current stroke`);
+                this.triggerAutoFormula('new_line');
+                // After trigger, tracking is reset and we'll add the current stroke to fresh tracking
+            }
+            
             // Add to auto-formula tracking (separate from visible selection)
             if (this.autoFormulaEnabled) {
                 this.autoFormulaStrokeIds.add(obj.id);
                 console.log(`➕ Added stroke ${obj.id} (${obj.type}) to auto-formula tracking`);
             }
             
-            this.onStrokeAdded(strokeY);
+            this.onStrokeAdded(strokeY, shouldTriggerNewLine);
         }
         
         return obj;
@@ -638,7 +648,26 @@ class DrawingEngine {
         }
     }
 
-    onStrokeAdded(strokeY) {
+    shouldTriggerNewLine(strokeY) {
+        if (!this.autoFormulaEnabled || this.autoFormulaStartTime === null) return false;
+        
+        const strokeCount = this.autoFormulaStrokeIds.size;
+        const timeSinceStart = Date.now() - this.autoFormulaStartTime;
+        
+        // Check for new line (significant Y position change) - be more conservative
+        if (this.lastStrokeY !== null && strokeY > this.lastStrokeY + this.newLineThreshold) {
+            // Only trigger if we have multiple strokes and enough time has passed
+            if (strokeCount >= 3 && timeSinceStart > 3000) {
+                console.log(`📏 New line check: Y change: ${this.lastStrokeY} → ${strokeY} (${strokeY - this.lastStrokeY}px) - TRIGGERING`);
+                return true;
+            } else {
+                console.log(`📏 New line detected but not triggering: strokeCount=${strokeCount} (need ≥3), timeSinceStart=${timeSinceStart}ms (need >3000ms)`);
+            }
+        }
+        return false;
+    }
+
+    onStrokeAdded(strokeY, alreadyTriggeredNewLine = false) {
         if (!this.autoFormulaEnabled) return;
 
         const now = Date.now();
@@ -652,18 +681,11 @@ class DrawingEngine {
         const strokeCount = this.autoFormulaStrokeIds.size;
         const timeSinceStart = now - this.autoFormulaStartTime;
         
-        console.log(`✏️ Stroke added at Y=${strokeY}, count=${strokeCount}, time since start=${timeSinceStart}ms`);
+        console.log(`✏️ Stroke added at Y=${strokeY}, count=${strokeCount}, time since start=${timeSinceStart}ms${alreadyTriggeredNewLine ? ' (after new line trigger)' : ''}`);
 
-        // Check for new line (significant Y position change) - be more conservative
-        if (this.lastStrokeY !== null && strokeY > this.lastStrokeY + this.newLineThreshold) {
-            // Only trigger if we have multiple strokes and enough time has passed
-            if (strokeCount >= 3 && timeSinceStart > 3000) {
-                console.log(`📏 New line detected! Y change: ${this.lastStrokeY} → ${strokeY} (${strokeY - this.lastStrokeY}px)`);
-                this.triggerAutoFormula('new_line');
-                return;
-            } else {
-                console.log(`📏 New line detected but not triggering: strokeCount=${strokeCount} (need ≥3), timeSinceStart=${timeSinceStart}ms (need >3000ms)`);
-            }
+        // Skip new line detection if we already triggered due to new line
+        if (!alreadyTriggeredNewLine) {
+            // Note: New line detection is now handled in addObject before stroke is added
         }
 
         this.lastStrokeY = strokeY;

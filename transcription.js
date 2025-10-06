@@ -112,6 +112,9 @@ class TranscriptionManager {
             if (timeSinceLastSpeech > this.pauseThreshold && this.elements.finished.innerHTML.trim()) {
                 console.log(`Pause detected: ${timeSinceLastSpeech}ms > ${this.pauseThreshold}ms - Adding line break`);
                 this.elements.finished.innerHTML += '<br>';
+                
+                // Add the previous text segment to the main document with timestamp
+                this.addTextToMainDocument();
             }
             
             // Add the final text to the finished container (escape HTML)
@@ -149,6 +152,64 @@ class TranscriptionManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    addTextToMainDocument() {
+        // Get the current transcribed text (without the line break we just added)
+        const currentText = this.getTranscriptionText();
+        if (!currentText.trim()) return;
+
+        // Check if we have access to the drawing engine
+        if (!window.app || !window.app.drawingEngine) {
+            console.warn('Drawing engine not available for adding speech timestamp');
+            return;
+        }
+
+        const drawingEngine = window.app.drawingEngine;
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('it-IT', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+        });
+
+        // Find a good position for the text, avoiding existing speech objects
+        let x = drawingEngine.viewOffsetX + 50;
+        let y = drawingEngine.viewOffsetY + 100;
+        
+        // Check for existing speech objects and position below them
+        const speechObjects = drawingEngine.drawnObjects.filter(obj => obj.type === 'speech');
+        if (speechObjects.length > 0) {
+            const lastSpeech = speechObjects[speechObjects.length - 1];
+            const lastBounds = window.GeometryUtils.objectBounds(lastSpeech);
+            y = Math.max(y, lastBounds.maxY + 20);
+        }
+
+        // Create speech text object
+        const speechObj = {
+            id: drawingEngine.idGenerator.generate(),
+            type: 'speech',
+            text: `🎤 [${timeString}] ${currentText}`,
+            x: x,
+            y: y,
+            color: '#0066cc',
+            fontSize: 14,
+            timestamp: now.getTime(),
+            speechText: currentText,
+            transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
+        };
+
+        drawingEngine.drawnObjects.push(speechObj);
+        console.log(`Added speech to document: [${timeString}] ${currentText.substring(0, 30)}...`);
+
+        // Push to history and redraw
+        if (window.app.historyManager) {
+            window.app.historyManager.pushHistory(drawingEngine.getState());
+        }
+        drawingEngine.redrawAll();
+
+        // Clear the transcription display for the next segment
+        this.elements.finished.innerHTML = '';
     }
 
     /* ==========================================================================
