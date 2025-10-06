@@ -720,32 +720,33 @@ class DrawingEngine {
         console.log(`🚀 Auto formula triggered by: ${reason}`);
         console.log(`📊 Stats: ${strokeCount} strokes, ${timeSinceStart}ms since start, ${timeSinceLastStroke}ms since last stroke`);
         
-        // Find strokes created since the start time using our separate tracking
+        // Clear the timeout to prevent duplicate triggers
+        this.clearAutoFormulaTimeout();
+        
+        // Capture strokes to convert BEFORE resetting (prevent new strokes from being included)
+        const strokeIdsToConvert = new Set(this.autoFormulaStrokeIds);
+        
+        // Reset tracking IMMEDIATELY to prevent new strokes from being included
+        this.resetAutoFormulaTracking();
+        
+        // Find strokes to convert using the captured IDs
         const strokesToConvert = this.drawnObjects.filter(obj => 
-            this.autoFormulaStrokeIds.has(obj.id)
+            strokeIdsToConvert.has(obj.id)
         );
 
         console.log(`🎯 Found ${strokesToConvert.length} strokes to convert`);
 
         if (strokesToConvert.length === 0) {
-            console.log(`❌ No strokes to convert, resetting tracking`);
-            this.resetAutoFormulaTracking();
+            console.log(`❌ No strokes to convert`);
             return;
         }
 
-        // Clear the timeout to prevent duplicate triggers
-        this.clearAutoFormulaTimeout();
-
-        // Store current user selection to restore it later
-        const userSelection = new Set(this.selectedIds);
-
-        // Temporarily select the strokes for conversion (quietly in background)
-        this.selectedIds.clear();
-        strokesToConvert.forEach(obj => this.selectedIds.add(obj.id));
-
-        // Trigger LaTeX conversion
+        // Trigger LaTeX conversion WITHOUT modifying selectedIds (avoid selection conflicts)
         if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
             try {
+                // Temporarily store the stroke IDs for LaTeX renderer to use
+                window.LatexRenderer.tempStrokeSelection = strokeIdsToConvert;
+                
                 await window.LatexRenderer.convertToLatex();
                 
                 // Auto-add to canvas if conversion was successful
@@ -756,22 +757,15 @@ class DrawingEngine {
                         window.LatexRenderer.addLatexToCanvas();
                     }
                     
-                    // Restore user's original selection
-                    this.selectedIds.clear();
-                    userSelection.forEach(id => this.selectedIds.add(id));
-                    this.redrawAll(); // Refresh display with restored selection
+                    // Clean up temporary selection
+                    delete window.LatexRenderer.tempStrokeSelection;
                 }, 100);
             } catch (error) {
                 console.error('Auto formula conversion failed:', error);
-                // Restore user selection even on error
-                this.selectedIds.clear();
-                userSelection.forEach(id => this.selectedIds.add(id));
-                this.redrawAll();
+                // Clean up temporary selection even on error
+                delete window.LatexRenderer.tempStrokeSelection;
             }
         }
-
-        // Reset tracking for next formula
-        this.resetAutoFormulaTracking();
     }
 }
 

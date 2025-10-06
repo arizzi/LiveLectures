@@ -76,9 +76,23 @@ class LatexRenderer {
         const temp = document.createElement('canvas');
         const tctx = temp.getContext('2d');
 
-        if (drawingEngine.selectedIds.size > 0) {
+        // Check if we have temporary stroke selection from auto-formula (takes priority)
+        const strokeSelection = this.tempStrokeSelection || null;
+        const hasSelection = strokeSelection || drawingEngine.selectedIds.size > 0;
+        
+        if (hasSelection) {
             // Capture selected objects only
-            const selected = drawingEngine.drawnObjects.filter(o => drawingEngine.selectedIds.has(o.id));
+            let selected;
+            if (strokeSelection) {
+                // Use temporary auto-formula selection
+                selected = drawingEngine.drawnObjects.filter(o => strokeSelection.has(o.id));
+                console.log(`🎯 Using auto-formula stroke selection: ${strokeSelection.size} strokes`);
+            } else {
+                // Use regular user selection
+                selected = drawingEngine.drawnObjects.filter(o => drawingEngine.selectedIds.has(o.id));
+                console.log(`🎯 Using user selection: ${drawingEngine.selectedIds.size} objects`);
+            }
+            
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             
             selected.forEach(o => {
@@ -102,7 +116,7 @@ class LatexRenderer {
             selected.forEach(o => drawingEngine.drawObject(tctx, o));
             
             this.lastConversionMeta = {
-                selection: new Set(drawingEngine.selectedIds),
+                selection: strokeSelection ? strokeSelection : new Set(drawingEngine.selectedIds),
                 bounds: { minX, minY, maxX, maxY }
             };
         } else {
