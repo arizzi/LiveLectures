@@ -560,3 +560,78 @@ html, body {
     border-color: #007bff;
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
+
+/* Background Selection Styles */
+.background-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.background-option {
+    text-align: center;
+    cursor: pointer;
+    padding: 10px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    transition: border-color 0.2s;
+}
+
+.background-option:hover {
+    border-color: #007bff;
+}
+
+.background-option.selected {
+    border-color: #007bff;
+    background-color: #f0f8ff;
+}
+
+.background-preview {
+    width: 80px;
+    height: 60px;
+    margin: 0 auto 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.lines-bg {
+    background-image: repeating-linear-gradient(
+        transparent,
+        transparent 24px,
+        #e8e8e8 24px,
+        #e8e8e8 25px
+    );
+}
+
+.squares-bg {
+    background-image: 
+        repeating-linear-gradient(0deg, #e8e8e8, #e8e8e8 1px, transparent 1px, transparent 25px),
+        repeating-linear-gradient(90deg, #e8e8e8, #e8e8e8 1px, transparent 1px, transparent 25px);
+}
+
+.dots-bg {
+    background-image: radial-gradient(circle at 12.5px 12.5px, #e8e8e8 1px, transparent 1px);
+    background-size: 25px 25px;
+}
+
+.color-selection {
+    margin-top: 20px;
+}
+
+.color-selection label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #333;
+}
+
+.color-selection select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}

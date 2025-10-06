@@ -120,6 +120,9 @@ class PDFExporter {
                 pageCtx.fillStyle = '#ffffff';
                 pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
+                // Draw background pattern if selected
+                this.drawPageBackgroundForPDF(pageCtx, 0, 0, pageCanvas.width, pageCanvas.height, drawingEngine);
+
                 // Calculate page offset
                 const pageOffsetY = pageIndex * drawingEngine.A4_HEIGHT;
                 console.log(`Processing page ${pageIndex + 1}, offset: ${pageOffsetY}`);
@@ -588,6 +591,55 @@ class PDFExporter {
             
             img.src = url;
         });
+    }
+
+    /* ==========================================================================
+       Background Pattern Drawing for PDF
+       ========================================================================== */
+    drawPageBackgroundForPDF(ctx, x, y, width, height, drawingEngine) {
+        if (drawingEngine.backgroundType === 'white') {
+            return; // Already drawn white background
+        }
+        
+        ctx.save();
+        ctx.strokeStyle = drawingEngine.patternColor || '#e8e8e8';
+        ctx.lineWidth = 0.5;
+        
+        if (drawingEngine.backgroundType === 'lines') {
+            // Draw horizontal lines every 25px
+            for (let lineY = y + 25; lineY < y + height; lineY += 25) {
+                ctx.beginPath();
+                ctx.moveTo(x, lineY);
+                ctx.lineTo(x + width, lineY);
+                ctx.stroke();
+            }
+        } else if (drawingEngine.backgroundType === 'squares') {
+            // Draw grid squares every 25px
+            for (let lineY = y; lineY <= y + height; lineY += 25) {
+                ctx.beginPath();
+                ctx.moveTo(x, lineY);
+                ctx.lineTo(x + width, lineY);
+                ctx.stroke();
+            }
+            for (let lineX = x; lineX <= x + width; lineX += 25) {
+                ctx.beginPath();
+                ctx.moveTo(lineX, y);
+                ctx.lineTo(lineX, y + height);
+                ctx.stroke();
+            }
+        } else if (drawingEngine.backgroundType === 'dots') {
+            // Draw dots every 25px
+            ctx.fillStyle = drawingEngine.patternColor || '#e8e8e8';
+            for (let dotY = y + 25; dotY < y + height; dotY += 25) {
+                for (let dotX = x + 25; dotX < x + width; dotX += 25) {
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, 1, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        ctx.restore();
     }
 }
 

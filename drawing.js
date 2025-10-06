@@ -17,6 +17,16 @@ class DrawingEngine {
         this.A4_HEIGHT = 1123; // 297mm at 96 DPI
         this.PAGE_HEIGHT = this.A4_HEIGHT;
         
+        // Page margins and spacing
+        this.PAGE_MARGIN = 40; // Margin around each page
+        this.PAGE_SPACING = 20; // Space between pages
+        this.CANVAS_WIDTH = this.A4_WIDTH + (2 * this.PAGE_MARGIN);
+        
+        // Background settings
+        this.backgroundType = 'white'; // white, lines, squares, dots, image
+        this.backgroundColor = '#f5f5f5'; // Grey background for margins
+        this.patternColor = '#e8e8e8'; // Light grey for patterns
+        
         // Timestamp tracking for drawing events
         this.lastTimestampTime = 0;
         this.timestampInterval = 5000; // 5 seconds
@@ -76,9 +86,9 @@ class DrawingEngine {
         this.previewCtx = previewCanvas.getContext('2d');
         this.canvasContainer = canvasContainer;
         
-        // Set up A4 portrait canvas with 2 initial pages
-        this.canvas.width = this.A4_WIDTH;
-        this.canvas.height = this.A4_HEIGHT * 2;
+        // Set up A4 portrait canvas with 2 initial pages and margins
+        this.canvas.width = this.CANVAS_WIDTH;
+        this.canvas.height = (this.A4_HEIGHT + this.PAGE_SPACING) * 2 + this.PAGE_MARGIN;
         
         this.resizeCanvases();
     }
@@ -90,10 +100,10 @@ class DrawingEngine {
         this.previewCanvas.width = width;
         this.previewCanvas.height = height;
         
-        // Initialize main canvas with A4 dimensions and start with 2 pages
+        // Initialize main canvas with A4 dimensions including margins and start with 2 pages
         if (!this.canvas.width) {
-            this.canvas.width = this.A4_WIDTH;
-            this.canvas.height = this.A4_HEIGHT * 2; // Start with 2 pages
+            this.canvas.width = this.CANVAS_WIDTH;
+            this.canvas.height = (this.A4_HEIGHT + this.PAGE_SPACING) * 2 + this.PAGE_MARGIN;
         }
         
         this.redrawAll();
@@ -350,10 +360,10 @@ class DrawingEngine {
        Main Rendering
        ========================================================================== */
     redrawAll() {
-        // Clear and setup main canvas
+        // Clear and setup main canvas with grey background
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.fillStyle = '#fff';
+        this.ctx.fillStyle = this.backgroundColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Apply view transform
@@ -363,26 +373,89 @@ class DrawingEngine {
             -this.viewOffsetY * this.viewScale
         );
 
-        // Draw page separators
-        const numPages = Math.ceil(this.canvas.height / this.PAGE_HEIGHT);
-        for (let i = 1; i < numPages; i++) {
-            const y = i * this.PAGE_HEIGHT;
-            this.ctx.save();
-            this.ctx.beginPath();
-            this.ctx.strokeStyle = '#e0e0e0';
-            this.ctx.lineWidth = 1 / this.viewScale;
-            this.ctx.setLineDash([6 / this.viewScale, 6 / this.viewScale]);
-            this.ctx.moveTo(0, y);
-            this.ctx.lineTo(this.canvas.width, y);
-            this.ctx.stroke();
-            this.ctx.restore();
-        }
+        // Draw A4 pages with proper spacing and backgrounds
+        this.drawPages();
 
         // Draw all objects
         this.drawnObjects.forEach(obj => this.drawObject(this.ctx, obj));
 
         // Draw overlay (selection, marquee, etc.)
         this.drawOverlay();
+    }
+
+    drawPages() {
+        const totalCanvasHeight = this.canvas.height / this.viewScale + this.viewOffsetY;
+        const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
+        
+        for (let i = 0; i < numPages; i++) {
+            const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
+            const pageX = this.PAGE_MARGIN;
+            
+            // Draw page shadow
+            this.ctx.save();
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            this.ctx.fillRect(pageX + 3, pageY + 3, this.A4_WIDTH, this.A4_HEIGHT);
+            
+            // Draw page background
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
+            
+            // Draw page border
+            this.ctx.strokeStyle = '#d0d0d0';
+            this.ctx.lineWidth = 1 / this.viewScale;
+            this.ctx.strokeRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
+            
+            // Draw background pattern if selected
+            this.drawPageBackground(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
+            
+            this.ctx.restore();
+        }
+    }
+
+    drawPageBackground(x, y, width, height) {
+        if (this.backgroundType === 'white') {
+            return; // Already drawn white background
+        }
+        
+        this.ctx.save();
+        this.ctx.strokeStyle = this.patternColor;
+        this.ctx.lineWidth = 0.5 / this.viewScale;
+        
+        if (this.backgroundType === 'lines') {
+            // Draw horizontal lines every 25px
+            for (let lineY = y + 25; lineY < y + height; lineY += 25) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, lineY);
+                this.ctx.lineTo(x + width, lineY);
+                this.ctx.stroke();
+            }
+        } else if (this.backgroundType === 'squares') {
+            // Draw grid squares every 25px
+            for (let lineY = y; lineY <= y + height; lineY += 25) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, lineY);
+                this.ctx.lineTo(x + width, lineY);
+                this.ctx.stroke();
+            }
+            for (let lineX = x; lineX <= x + width; lineX += 25) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(lineX, y);
+                this.ctx.lineTo(lineX, y + height);
+                this.ctx.stroke();
+            }
+        } else if (this.backgroundType === 'dots') {
+            // Draw dots every 25px
+            this.ctx.fillStyle = this.patternColor;
+            for (let dotY = y + 25; dotY < y + height; dotY += 25) {
+                for (let dotX = x + 25; dotX < x + width; dotX += 25) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(dotX, dotY, 1 / this.viewScale, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                }
+            }
+        }
+        
+        this.ctx.restore();
     }
 
     /* ==========================================================================
@@ -422,7 +495,64 @@ class DrawingEngine {
        Page Management
        ========================================================================== */
     addPage() {
-        this.canvas.height += this.PAGE_HEIGHT;
+        this.canvas.height += this.A4_HEIGHT + this.PAGE_SPACING;
+        this.redrawAll();
+    }
+
+    /* ==========================================================================
+       Page Boundary Utilities
+       ========================================================================== */
+    isWithinPageBounds(x, y) {
+        // Check if coordinates are within any page bounds
+        const pageX = this.PAGE_MARGIN;
+        const pageRight = this.PAGE_MARGIN + this.A4_WIDTH;
+        
+        if (x < pageX || x > pageRight) {
+            return false;
+        }
+        
+        // Check which page this Y coordinate belongs to
+        const relativeY = y - this.PAGE_MARGIN;
+        if (relativeY < 0) return false;
+        
+        const pageIndex = Math.floor(relativeY / (this.A4_HEIGHT + this.PAGE_SPACING));
+        const yInPage = relativeY % (this.A4_HEIGHT + this.PAGE_SPACING);
+        
+        // Return true if Y is within page bounds (not in spacing area)
+        return yInPage <= this.A4_HEIGHT;
+    }
+
+    constrainToPageBounds(x, y) {
+        // Constrain coordinates to nearest page bounds
+        const pageX = this.PAGE_MARGIN;
+        const pageRight = this.PAGE_MARGIN + this.A4_WIDTH;
+        
+        // Constrain X to page width
+        x = Math.max(pageX, Math.min(pageRight, x));
+        
+        // Constrain Y to page bounds
+        const relativeY = y - this.PAGE_MARGIN;
+        if (relativeY < 0) {
+            return { x, y: this.PAGE_MARGIN };
+        }
+        
+        const pageIndex = Math.floor(relativeY / (this.A4_HEIGHT + this.PAGE_SPACING));
+        const yInPage = relativeY % (this.A4_HEIGHT + this.PAGE_SPACING);
+        
+        if (yInPage > this.A4_HEIGHT) {
+            // In spacing area, snap to bottom of current page or top of next page
+            const currentPageBottom = this.PAGE_MARGIN + pageIndex * (this.A4_HEIGHT + this.PAGE_SPACING) + this.A4_HEIGHT;
+            const nextPageTop = this.PAGE_MARGIN + (pageIndex + 1) * (this.A4_HEIGHT + this.PAGE_SPACING);
+            
+            // Choose closer boundary
+            if (y - currentPageBottom < nextPageTop - y) {
+                y = currentPageBottom;
+            } else {
+                y = nextPageTop;
+            }
+        }
+        
+        return { x, y };
     }
 
     /* ==========================================================================

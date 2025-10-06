@@ -107,6 +107,9 @@
                 <div class="toolbar-button" id="addPageBtn" title="Add Page">
                     <i class="fas fa-plus"></i>
                 </div>
+                <div class="toolbar-button" id="backgroundBtn" title="Page Background">
+                    <i class="fas fa-image"></i>
+                </div>
                 <div class="toolbar-button" id="fileActionsBtn" title="File Actions">
                     <i class="fas fa-folder"></i>
                     <span class="dropdown-arrow">▼</span>
@@ -213,6 +216,49 @@
             <div class="modal-footer">
                 <button id="savePropertiesBtn" class="btn btn-primary">Save</button>
                 <button id="cancelPropertiesBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background Selection Modal -->
+    <div id="backgroundModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Page Background</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="background-options">
+                    <div class="background-option" data-type="white">
+                        <div class="background-preview white-bg"></div>
+                        <span>White</span>
+                    </div>
+                    <div class="background-option" data-type="lines">
+                        <div class="background-preview lines-bg"></div>
+                        <span>Lined</span>
+                    </div>
+                    <div class="background-option" data-type="squares">
+                        <div class="background-preview squares-bg"></div>
+                        <span>Grid</span>
+                    </div>
+                    <div class="background-option" data-type="dots">
+                        <div class="background-preview dots-bg"></div>
+                        <span>Dots</span>
+                    </div>
+                </div>
+                <div class="color-selection">
+                    <label for="patternColor">Pattern Color:</label>
+                    <select id="patternColor">
+                        <option value="#e8e8e8">Light Grey</option>
+                        <option value="#d4e6f1">Light Blue</option>
+                        <option value="#d5f4e6">Light Green</option>
+                        <option value="#fdebd0">Light Orange</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="applyBackgroundBtn" class="btn btn-primary">Apply</button>
+                <button id="cancelBackgroundBtn" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>

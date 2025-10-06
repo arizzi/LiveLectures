@@ -195,6 +195,12 @@ class NotesApp {
        ========================================================================== */
     startDrawing(coords, e, tool) {
         const de = this.drawingEngine;
+        
+        // Check if starting point is within page bounds
+        if (!de.isWithinPageBounds(coords.x, coords.y)) {
+            coords = de.constrainToPageBounds(coords.x, coords.y);
+        }
+        
         de.isDrawing = true;
         de.shapeStartX = coords.x;
         de.shapeStartY = coords.y;
@@ -215,6 +221,12 @@ class NotesApp {
 
     startErasing(coords, e) {
         const de = this.drawingEngine;
+        
+        // Check if starting point is within page bounds
+        if (!de.isWithinPageBounds(coords.x, coords.y)) {
+            coords = de.constrainToPageBounds(coords.x, coords.y);
+        }
+        
         de.isDrawing = true;
         de.isErasing = true;
 
@@ -231,12 +243,16 @@ class NotesApp {
         const coords = de.getCanvasCoords(e);
         const tool = this.toolbarManager.getCurrentTool();
 
+        // Constrain coordinates to page bounds
+        const constrainedCoords = de.isWithinPageBounds(coords.x, coords.y) ? 
+            coords : de.constrainToPageBounds(coords.x, coords.y);
+
         if ((tool === 'pen' || tool === 'eraser' || de.isErasing) && de.currentPath) {
             const pressure = (de.isErasing || tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
-            de.currentPath.points.push({ ...coords, pressure });
+            de.currentPath.points.push({ ...constrainedCoords, pressure });
             de.redrawAll();
         } else if (['line', 'circle', 'rect'].includes(tool)) {
-            this.drawShapePreview(coords, tool);
+            this.drawShapePreview(constrainedCoords, tool);
         }
     }
 

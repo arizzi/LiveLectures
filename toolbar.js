@@ -41,6 +41,7 @@ class ToolbarManager {
         this.elements.editPropertiesBtn = document.getElementById('editPropertiesBtn');
         this.elements.deleteBtn = document.getElementById('deleteBtn');
         this.elements.addPageBtn = document.getElementById('addPageBtn');
+        this.elements.backgroundBtn = document.getElementById('backgroundBtn');
         this.elements.exportPdfBtn = document.getElementById('exportPdfBtn');
         this.elements.exportJsonBtn = document.getElementById('exportJsonBtn');
         this.elements.importJsonBtn = document.getElementById('importJsonBtn');
@@ -135,6 +136,11 @@ class ToolbarManager {
             if (window.app && window.app.addPage) {
                 window.app.addPage();
             }
+        });
+
+        // Background Selection
+        this.elements.backgroundBtn.addEventListener('click', () => {
+            this.showBackgroundModal();
         });
 
         // Clear All
@@ -637,6 +643,78 @@ class ToolbarManager {
         const modal = document.getElementById('editPropertiesModal');
         modal.style.display = 'none';
         this.currentEditingObject = null;
+    }
+
+    /* ==========================================================================
+       Background Selection Modal
+       ========================================================================== */
+    showBackgroundModal() {
+        const modal = document.getElementById('backgroundModal');
+        const options = modal.querySelectorAll('.background-option');
+        const patternColorSelect = document.getElementById('patternColor');
+        
+        // Set current selection
+        const currentBackground = window.app.drawingEngine.backgroundType;
+        options.forEach(option => {
+            option.classList.remove('selected');
+            if (option.dataset.type === currentBackground) {
+                option.classList.add('selected');
+            }
+        });
+        
+        // Set current pattern color
+        patternColorSelect.value = window.app.drawingEngine.patternColor;
+        
+        // Add event listeners
+        options.forEach(option => {
+            option.addEventListener('click', () => {
+                options.forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+            });
+        });
+        
+        const applyBtn = document.getElementById('applyBackgroundBtn');
+        const cancelBtn = document.getElementById('cancelBackgroundBtn');
+        const closeBtn = modal.querySelector('.modal-close');
+        
+        // Remove existing listeners
+        applyBtn.replaceWith(applyBtn.cloneNode(true));
+        cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+        closeBtn.replaceWith(closeBtn.cloneNode(true));
+        
+        // Add new listeners
+        document.getElementById('applyBackgroundBtn').addEventListener('click', () => {
+            this.applyBackground();
+        });
+        
+        document.getElementById('cancelBackgroundBtn').addEventListener('click', () => {
+            this.closeBackgroundModal();
+        });
+        
+        modal.querySelector('.modal-close').addEventListener('click', () => {
+            this.closeBackgroundModal();
+        });
+        
+        modal.style.display = 'flex';
+    }
+    
+    applyBackground() {
+        const selectedOption = document.querySelector('.background-option.selected');
+        const patternColor = document.getElementById('patternColor').value;
+        
+        if (selectedOption && window.app.drawingEngine) {
+            const backgroundType = selectedOption.dataset.type;
+            window.app.drawingEngine.backgroundType = backgroundType;
+            window.app.drawingEngine.patternColor = patternColor;
+            window.app.drawingEngine.redrawAll();
+        }
+        
+        this.closeBackgroundModal();
+    }
+    
+    closeBackgroundModal() {
+        const modal = document.getElementById('backgroundModal');
+        modal.style.display = 'none';
     }
 }
 
