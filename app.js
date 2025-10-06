@@ -908,8 +908,13 @@ class NotesApp {
         
         this.drawingEngine.viewOffsetX = 0;
         this.drawingEngine.viewOffsetY = 0;
-        this.drawingEngine.viewScale = 1;
-        this.drawingEngine.updateZoomLabel();
+        try {
+            this.drawingEngine.setZoom(1);
+        } catch (err) {
+            // Fallback to direct assignment if setZoom is unavailable for some reason
+            this.drawingEngine.viewScale = 1;
+            this.drawingEngine.updateZoomLabel();
+        }
         this.drawingEngine.selectedIds.clear();
         
         this.historyManager.pushHistory(this.drawingEngine.getState());

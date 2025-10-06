@@ -57,6 +57,8 @@ class ToolbarManager {
     this.elements.zoomOutBtn = document.getElementById('zoomOutBtn');
     this.elements.resetZoomBtn = document.getElementById('resetZoomBtn');
     this.elements.fitWidthBtn = document.getElementById('fitWidthBtn');
+    this.elements.lockZoomBtn = document.getElementById('lockZoomBtn');
+    this.elements.lockZoomLabel = document.getElementById('lockZoomLabel');
     this.elements.zoomLabel = document.getElementById('zoomLabel');
 
         // Color and size controls
@@ -187,9 +189,7 @@ class ToolbarManager {
             this.elements.resetZoomBtn.addEventListener('click', () => {
                 const de = window.app?.drawingEngine;
                 if (de) {
-                    de.viewScale = 1;
-                    de.updateZoomLabel();
-                    de.redrawAll();
+                    de.setZoom(1);
                 }
             });
         }
@@ -199,6 +199,32 @@ class ToolbarManager {
                 const de = window.app?.drawingEngine;
                 if (!de) return;
                 de.fitWidthCenter();
+            });
+        }
+
+        // Lock Zoom toggle
+        if (this.elements.lockZoomBtn) {
+            this.elements.lockZoomBtn.addEventListener('click', () => {
+                // Toggle global zoom lock flag
+                window.NotesApp = window.NotesApp || {};
+                window.NotesApp.zoomLocked = !window.NotesApp.zoomLocked;
+
+                const locked = !!window.NotesApp.zoomLocked;
+                // Update button appearance
+                if (locked) {
+                    this.elements.lockZoomBtn.classList.add('active');
+                    const ico = this.elements.lockZoomBtn.querySelector('i');
+                    if (ico) ico.className = 'fas fa-lock';
+                    if (this.elements.lockZoomLabel) this.elements.lockZoomLabel.textContent = 'Unlock Zoom';
+                } else {
+                    this.elements.lockZoomBtn.classList.remove('active');
+                    const ico = this.elements.lockZoomBtn.querySelector('i');
+                    if (ico) ico.className = 'fas fa-lock-open';
+                    if (this.elements.lockZoomLabel) this.elements.lockZoomLabel.textContent = 'Lock Zoom';
+                }
+
+                // Hide submenu after toggle
+                this.hideAllSubmenus();
             });
         }
 
@@ -440,9 +466,7 @@ class ToolbarManager {
             if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 if (window.app && window.app.drawingEngine) {
-                    window.app.drawingEngine.viewScale = 1;
-                    window.app.drawingEngine.updateZoomLabel();
-                    window.app.drawingEngine.redrawAll();
+                    window.app.drawingEngine.setZoom(1);
                 }
             }
         });

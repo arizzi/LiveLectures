@@ -84,10 +84,10 @@ class DrawingEngine {
     // Scribble-as-deleter thresholds (configurable)
     // Minimum/maximum pixel extents (width/height) of a stroke to be considered a scribble deleter
     this.scribbleMinExtent = 10;
-    this.scribbleMaxExtent = 50;
+    this.scribbleMaxExtent = 70;
     // Coverage thresholds: if stroke bounding box is covered by stroke points between these values (0-1)
-    this.scribbleMinCoverage = 0.70;
-    this.scribbleMaxCoverage = 0.95;
+    this.scribbleMinCoverage = 0.60;
+    this.scribbleMaxCoverage = 1;
 
     // Flood-fill confirmation threshold (fraction of total canvas pixels).
     // If a fill would change more than this fraction, ask the user to confirm.
@@ -701,6 +701,12 @@ class DrawingEngine {
        Zoom and Pan
        ========================================================================== */
     setZoom(newScale, anchorScreenX = this.previewCanvas.width / 2, anchorScreenY = this.previewCanvas.height / 2) {
+        // Respect global zoom lock if set
+        if (window.NotesApp && window.NotesApp.zoomLocked) {
+            // Ignore zoom requests when locked
+            console.debug('Zoom change blocked: zoomLocked is true');
+            return;
+        }
         const before = {
             x: anchorScreenX / this.viewScale + this.viewOffsetX,
             y: anchorScreenY / this.viewScale + this.viewOffsetY
@@ -732,6 +738,11 @@ class DrawingEngine {
 
     // Fit the A4 page width to the preview canvas width and center the view
     fitWidthCenter(padding = 24) {
+        // If zoom is locked, skip fit operation
+        if (window.NotesApp && window.NotesApp.zoomLocked) {
+            console.debug('fitWidthCenter blocked: zoomLocked is true');
+            return;
+        }
         if (!this.previewCanvas) return;
 
         // Use the preview canvas displayed size (CSS pixels) for layout
@@ -778,6 +789,11 @@ class DrawingEngine {
     // Fit the A4 page width to the preview canvas width and center ONLY horizontally.
     // This preserves the current vertical offset (does not scroll to vertical center).
     fitWidthCenterHorizontal(padding = 24) {
+        // If zoom is locked, skip fit operation
+        if (window.NotesApp && window.NotesApp.zoomLocked) {
+            console.debug('fitWidthCenterHorizontal blocked: zoomLocked is true');
+            return;
+        }
         if (!this.previewCanvas) return;
 
         // Use the preview canvas displayed size (CSS pixels) for layout
@@ -1128,10 +1144,31 @@ class DrawingEngine {
 
         // Estimate coverage
         const coverage = this.estimatePathCoverage(pathObj);
-        if (coverage >= this.scribbleMinCoverage && coverage <= this.scribbleMaxCoverage) {
-            return true;
+        if (!(coverage >= this.scribbleMinCoverage && coverage <= this.scribbleMaxCoverage)) {
+            return false;
         }
-        return false;
+        // up down pattern
+        // loop on the points and count direction changes as inversions of at least 150 degrees
+        let inversions = 0;
+        for (let i = 2; i < pathObj.points.length; i++) {
+            const p0 = pathObj.points[i - 2];
+            const p1 = pathObj.points[i - 1];
+            const p2 = pathObj.points[i];
+            const v1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+            const v2 = { x: p2.x - p1.x, y: p2.y - p1.y };
+            const dot = v1.x * v2.x + v1.y * v2.y;
+            const mag1 = Math.hypot(v1.x, v1.y);
+            const mag2 = Math.hypot(v2.x, v2.y);
+            if (mag1 > 0 && mag2 > 0) {
+                const cosTheta = dot / (mag1 * mag2);
+                if (cosTheta < -0.866) { // cos(150°) = -0.866
+                    inversions++;
+                }
+            }
+        }
+        console.log(`Scribble deleter check: width=${width.toFixed(1)}, height=${height.toFixed(1)}, coverage=${(coverage*100).toFixed(1)}%, inversions=${inversions}`);
+        if (inversions < 6) return false;
+        return true;
     }
 
     selectAll() {
