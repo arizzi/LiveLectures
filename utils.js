@@ -96,7 +96,34 @@ class GeometryUtils {
     }
 
     static objectBounds(obj) {
-        if (obj.type === 'path') {
+        if (obj.type === 'timestamp') {
+            // Approximate bounds for timestamp text
+            const width = (obj.text ? obj.text.length : 10) * (obj.fontSize || 12) * 0.6;
+            const height = obj.fontSize || 12;
+            return { 
+                minX: obj.x, 
+                minY: obj.y, 
+                maxX: obj.x + width, 
+                maxY: obj.y + height 
+            };
+        } else if (obj.type === 'speech') {
+            // Approximate bounds for speech text (word-wrapped)
+            const fontSize = obj.fontSize || 14;
+            const lineHeight = fontSize + 4;
+            const maxWidth = 400;
+            const charWidth = fontSize * 0.6;
+            const approxCharsPerLine = Math.floor(maxWidth / charWidth);
+            const textLength = obj.text ? obj.text.length : 50;
+            const approxLines = Math.ceil(textLength / approxCharsPerLine);
+            const width = Math.min(textLength * charWidth, maxWidth);
+            const height = approxLines * lineHeight;
+            return { 
+                minX: obj.x, 
+                minY: obj.y, 
+                maxX: obj.x + width, 
+                maxY: obj.y + height 
+            };
+        } else if (obj.type === 'path') {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             obj.points.forEach(p => {
                 if (p.x < minX) minX = p.x;
@@ -230,6 +257,14 @@ class GeometryUtils {
                 }
             }
             return false;
+        } else if (obj.type === 'timestamp') {
+            const bounds = this.objectBounds(obj);
+            return local.x >= bounds.minX && local.x <= bounds.maxX && 
+                   local.y >= bounds.minY && local.y <= bounds.maxY;
+        } else if (obj.type === 'speech') {
+            const bounds = this.objectBounds(obj);
+            return local.x >= bounds.minX && local.x <= bounds.maxX && 
+                   local.y >= bounds.minY && local.y <= bounds.maxY;
         } else if (obj.type === 'line') {
             return this.pointToSegmentDistance(local.x, local.y, obj.startX, obj.startY, obj.endX, obj.endY) <= 
                 Math.max(tolerance, obj.size / 2);

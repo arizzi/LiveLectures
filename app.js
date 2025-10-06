@@ -65,6 +65,7 @@ class NotesApp {
     setupEventHandlers() {
         this.setupPointerEvents();
         this.setupGestureEvents();
+        this.setupScrollMonitoring();
     }
 
     setupPointerEvents() {
@@ -80,6 +81,13 @@ class NotesApp {
     setupGestureEvents() {
         // Touch pinch zoom could be implemented here if needed
         // For now, relying on basic pointer events and keyboard shortcuts
+    }
+
+    setupScrollMonitoring() {
+        // Monitor scroll changes for auto-formula detection
+        window.addEventListener('scroll', () => {
+            this.drawingEngine.onScrollChanged();
+        });
     }
 
     /* ==========================================================================

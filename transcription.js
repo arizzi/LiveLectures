@@ -107,6 +107,7 @@ class TranscriptionManager {
             const currentTime = Date.now();
             const timeSinceLastSpeech = currentTime - this.lastSpeechTime;
           //  console.log(`Time since last speech: ${timeSinceLastSpeech}ms vs threshold ${this.pauseThreshold}ms diff ${timeSinceLastSpeech - this.pauseThreshold}ms`);
+            
             // Add line break if there was a long pause
             if (timeSinceLastSpeech > this.pauseThreshold && this.elements.finished.innerHTML.trim()) {
                 console.log(`Pause detected: ${timeSinceLastSpeech}ms > ${this.pauseThreshold}ms - Adding line break`);

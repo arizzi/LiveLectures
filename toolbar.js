@@ -51,6 +51,7 @@ class ToolbarManager {
 
         // AI and transcription
         this.elements.convertToLatexBtn = document.getElementById('convertToLatexBtn');
+        this.elements.autoFormulaBtn = document.getElementById('autoFormulaBtn');
         this.elements.transcriptionBtn = document.getElementById('transcriptionBtn');
     }
 
@@ -173,6 +174,11 @@ class ToolbarManager {
             if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
                 window.LatexRenderer.convertToLatex();
             }
+        });
+
+        // Auto Formula toggle
+        this.elements.autoFormulaBtn.addEventListener('click', () => {
+            this.toggleAutoFormula();
         });
 
         // Transcription toggle
@@ -352,6 +358,26 @@ class ToolbarManager {
         } else {
             this.elements.transcriptionBtn.classList.remove('recording');
             this.elements.transcriptionBtn.title = 'Start Transcription';
+        }
+    }
+
+    /* ==========================================================================
+       Auto Formula Toggle
+       ========================================================================== */
+    toggleAutoFormula() {
+        const drawingEngine = window.app?.drawingEngine;
+        if (!drawingEngine) return;
+
+        const isEnabled = !drawingEngine.autoFormulaEnabled;
+        drawingEngine.setAutoFormulaEnabled(isEnabled);
+        
+        // Update button appearance
+        if (isEnabled) {
+            this.elements.autoFormulaBtn.classList.add('active');
+            this.elements.autoFormulaBtn.title = 'Disable Auto Formula Recognition';
+        } else {
+            this.elements.autoFormulaBtn.classList.remove('active');
+            this.elements.autoFormulaBtn.title = 'Enable Auto Formula Recognition';
         }
     }
 }
