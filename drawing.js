@@ -11,7 +11,11 @@ class DrawingEngine {
         this.viewOffsetX = 0;
         this.viewOffsetY = 0;
         this.viewScale = 1;
-        this.PAGE_HEIGHT = 0;
+        
+        // A4 portrait dimensions at 96 DPI
+        this.A4_WIDTH = 794;   // 210mm at 96 DPI
+        this.A4_HEIGHT = 1123; // 297mm at 96 DPI
+        this.PAGE_HEIGHT = this.A4_HEIGHT;
         
         // Timestamp tracking for drawing events
         this.lastTimestampTime = 0;
@@ -72,19 +76,25 @@ class DrawingEngine {
         this.previewCtx = previewCanvas.getContext('2d');
         this.canvasContainer = canvasContainer;
         
+        // Set up A4 portrait canvas with 2 initial pages
+        this.canvas.width = this.A4_WIDTH;
+        this.canvas.height = this.A4_HEIGHT * 2;
+        
         this.resizeCanvases();
     }
 
     resizeCanvases() {
         const { width, height } = this.canvasContainer.getBoundingClientRect();
         
-        if (!this.canvas.width) this.canvas.width = width;
-        if (!this.canvas.height) this.canvas.height = height;
-        
+        // Set canvas width to container width, but use A4 height for pages
         this.previewCanvas.width = width;
         this.previewCanvas.height = height;
         
-        if (!this.PAGE_HEIGHT) this.PAGE_HEIGHT = height;
+        // Initialize main canvas with A4 dimensions and start with 2 pages
+        if (!this.canvas.width) {
+            this.canvas.width = this.A4_WIDTH;
+            this.canvas.height = this.A4_HEIGHT * 2; // Start with 2 pages
+        }
         
         this.redrawAll();
     }
@@ -581,9 +591,9 @@ class DrawingEngine {
         this.viewOffsetX = state.viewOffsetX || 0;
         this.viewOffsetY = state.viewOffsetY || 0;
         this.viewScale = state.viewScale || 1;
-        this.canvas.width = state.canvasWidth || this.canvas.width;
-        this.canvas.height = state.canvasHeight || this.canvas.height;
-        this.PAGE_HEIGHT = state.pageHeight || this.PAGE_HEIGHT || this.previewCanvas.height;
+        this.canvas.width = state.canvasWidth || this.A4_WIDTH;
+        this.canvas.height = state.canvasHeight || (this.A4_HEIGHT * 2);
+        this.PAGE_HEIGHT = state.pageHeight || this.A4_HEIGHT;
         this.idGenerator.setNext(state.nextId || this.idGenerator.nextId);
         this.lastTimestampTime = state.lastTimestampTime || 0;
         this.selectedIds.clear();
@@ -598,10 +608,9 @@ class DrawingEngine {
         this.viewScale = 1;
         this.lastTimestampTime = 0;
         
-        const { width, height } = this.canvasContainer.getBoundingClientRect();
-        this.canvas.width = width;
-        this.canvas.height = height;
-        this.PAGE_HEIGHT = height;
+        // Reset to A4 dimensions with 2 pages
+        this.canvas.width = this.A4_WIDTH;
+        this.canvas.height = this.A4_HEIGHT * 2;
         
         this.updateZoomLabel();
     }
