@@ -79,9 +79,12 @@ class PDFExporter {
             const pdf = new this.jsPDF({
                 orientation: 'portrait',
                 unit: 'mm',
-                format: 'a4'
+                format: 'a4',
+                compress: true,
+                precision: 16
             });
 
+            // Remove any default margins by explicitly setting page dimensions
             const pageWidth = 210; // A4 width in mm
             const pageHeight = 297; // A4 height in mm
             
@@ -91,8 +94,11 @@ class PDFExporter {
             const scaleX = pageWidth / drawingEngine.A4_WIDTH;
             const scaleY = pageHeight / drawingEngine.A4_HEIGHT;
 
-            // Calculate number of pages
-            const numPages = Math.ceil(drawingEngine.canvas.height / drawingEngine.A4_HEIGHT);
+            // Calculate number of pages accounting for margins and spacing
+            const pageMargin = drawingEngine.PAGE_MARGIN || 40;
+            const pageSpacing = drawingEngine.PAGE_SPACING || 20;
+            const totalCanvasHeight = drawingEngine.canvas.height;
+            const numPages = Math.ceil((totalCanvasHeight - pageMargin) / (drawingEngine.A4_HEIGHT + pageSpacing));
             console.log(`Exporting ${numPages} pages to PDF`);
             console.log(`Found ${drawingEngine.drawnObjects.length} objects to export`);
             
@@ -123,8 +129,10 @@ class PDFExporter {
                 // Draw background pattern if selected
                 this.drawPageBackgroundForPDF(pageCtx, 0, 0, pageCanvas.width, pageCanvas.height, drawingEngine);
 
-                // Calculate page offset
-                const pageOffsetY = pageIndex * drawingEngine.A4_HEIGHT;
+                // Calculate page offset accounting for margins and spacing
+                const pageMargin = drawingEngine.PAGE_MARGIN || 40;
+                const pageSpacing = drawingEngine.PAGE_SPACING || 20;
+                const pageOffsetY = pageMargin + pageIndex * (drawingEngine.A4_HEIGHT + pageSpacing);
                 console.log(`Processing page ${pageIndex + 1}, offset: ${pageOffsetY}`);
 
                 // Draw objects that are on this page
@@ -148,7 +156,12 @@ class PDFExporter {
 
                 // Convert canvas to image and add to PDF
                 const imageData = pageCanvas.toDataURL('image/png');
-                pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight);
+                
+                // Add image with precise positioning (no margins)
+                // Some PDF engines may have tiny default margins, so we explicitly set to 0,0
+                pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight, '', 'FAST');
+                
+                console.log(`Added page ${pageIndex + 1} to PDF at (0,0) with size ${pageWidth}x${pageHeight}mm`);
             }
 
             // Save the PDF
@@ -222,23 +235,55 @@ class PDFExporter {
         // Get object bounds
         const bounds = this.getObjectBounds(obj);
         
-        // Check if object intersects with page
-        const pageTop = pageOffsetY;
-        const pageBottom = pageOffsetY + pageHeight;
+        // Get the drawing engine to access PAGE_MARGIN and A4_WIDTH
+        const drawingEngine = window.app.drawingEngine;
+        const pageMargin = drawingEngine.PAGE_MARGIN || 40;
+        const pageWidth = drawingEngine.A4_WIDTH || 794;
         
-        const intersects = bounds.maxY >= pageTop && bounds.minY <= pageBottom;
+        // Define the actual A4 page boundaries (excluding margins)
+        const pageLeft = pageMargin;
+        const pageRight = pageMargin + pageWidth;
+        const pageTop = pageOffsetY + pageMargin;
+        const pageBottom = pageOffsetY + pageHeight + pageMargin;
+        
+        // Check if object intersects with the actual page area (not margins)
+        const intersectsVertically = bounds.maxY >= pageTop && bounds.minY <= pageBottom;
+        const intersectsHorizontally = bounds.maxX >= pageLeft && bounds.minX <= pageRight;
+        
+        const intersects = intersectsVertically && intersectsHorizontally;
         
         // Debug output for problematic objects
         if (obj.type === 'latex' && !intersects) {
-            console.log(`LaTeX object ${obj.id} NOT on page (${pageTop}-${pageBottom}):`, bounds);
+            console.log(`LaTeX object ${obj.id} NOT on page (${pageLeft}-${pageRight}, ${pageTop}-${pageBottom}):`, bounds);
         }
         
         return intersects;
     }
 
     adjustObjectForPage(obj, pageOffsetY) {
-        // Create a copy of the object with adjusted Y coordinates
+        // Create a copy of the object with adjusted coordinates
         const adjustedObj = JSON.parse(JSON.stringify(obj));
+        
+        // Get the drawing engine to access PAGE_MARGIN
+        const drawingEngine = window.app.drawingEngine;
+        const pageMargin = drawingEngine.PAGE_MARGIN || 40;
+        
+        // Small adjustment to compensate for potential PDF engine coordinate rounding
+        // Some PDF engines have tiny implicit margins or coordinate precision issues
+        const pdfAdjustmentX = 0; // No adjustment needed for X after testing
+        const pdfAdjustmentY = 2; // Small upward adjustment to compensate for PDF engine boundaries
+        
+        // Debug: log original coordinates for first few objects
+        if (obj.type === 'path' && obj.points && obj.points.length > 0) {
+            console.log(`Adjusting ${obj.type} object:`, {
+                originalX: obj.points[0].x,
+                originalY: obj.points[0].y,
+                pageOffsetY: pageOffsetY,
+                pageMargin: pageMargin,
+                adjustedX: obj.points[0].x - pageMargin,
+                adjustedY: obj.points[0].y - pageOffsetY
+            });
+        }
         
         switch (obj.type) {
             case 'freehand':
@@ -246,7 +291,8 @@ class PDFExporter {
                 if (adjustedObj.points) {
                     adjustedObj.points = obj.points.map(point => ({
                         ...point,
-                        y: point.y - pageOffsetY
+                        x: point.x - pageMargin + pdfAdjustmentX, // Subtract left margin + PDF adjustment
+                        y: point.y - pageOffsetY + pdfAdjustmentY // Subtract page offset + PDF adjustment
                     }));
                 }
                 break;
@@ -254,28 +300,37 @@ class PDFExporter {
             case 'line':
             case 'rect':
             case 'circle':
-                adjustedObj.startY = (obj.startY || 0) - pageOffsetY;
-                adjustedObj.endY = (obj.endY || 0) - pageOffsetY;
+                adjustedObj.startX = (obj.startX || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.endX = (obj.endX || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.startY = (obj.startY || 0) - pageOffsetY + pdfAdjustmentY;
+                adjustedObj.endY = (obj.endY || 0) - pageOffsetY + pdfAdjustmentY;
+                if (obj.x !== undefined) {
+                    adjustedObj.x = obj.x - pageMargin + pdfAdjustmentX;
+                }
                 if (obj.y !== undefined) {
-                    adjustedObj.y = obj.y - pageOffsetY;
+                    adjustedObj.y = obj.y - pageOffsetY + pdfAdjustmentY;
                 }
                 break;
                 
             case 'text':
-                adjustedObj.y = obj.y - pageOffsetY;
+                adjustedObj.x = (obj.x || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.y = obj.y - pageOffsetY + pdfAdjustmentY;
                 break;
                 
             case 'latex':
                 // LaTeX objects use startX/startY, endX/endY format
-                adjustedObj.startY = (obj.startY || 0) - pageOffsetY;
-                adjustedObj.endY = (obj.endY || 0) - pageOffsetY;
+                adjustedObj.startX = (obj.startX || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.endX = (obj.endX || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.startY = (obj.startY || 0) - pageOffsetY + pdfAdjustmentY;
+                adjustedObj.endY = (obj.endY || 0) - pageOffsetY + pdfAdjustmentY;
                 // Also set x,y for compatibility
-                adjustedObj.x = obj.startX || 0;
-                adjustedObj.y = (obj.startY || 0) - pageOffsetY;
+                adjustedObj.x = (obj.startX || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.y = (obj.startY || 0) - pageOffsetY + pdfAdjustmentY;
                 break;
                 
             case 'timestamp':
-                adjustedObj.y = (obj.y || 0) - pageOffsetY;
+                adjustedObj.x = (obj.x || 0) - pageMargin + pdfAdjustmentX;
+                adjustedObj.y = (obj.y || 0) - pageOffsetY + pdfAdjustmentY;
                 break;
                 
             default:
