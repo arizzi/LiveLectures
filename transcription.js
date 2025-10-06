@@ -9,6 +9,7 @@ class TranscriptionManager {
         this.isSupported = false;
         this.lastSpeechTime = Date.now();
         this.pauseThreshold = 2000; // 2 seconds for line break
+        this.lastProcessedResultIndex = -1; // Track processed results to prevent duplication
 
         this.elements = {
             status: document.getElementById('transcription-status'),
@@ -63,6 +64,8 @@ class TranscriptionManager {
 
         this.recognition.onend = () => {
             if (this.isListening) {
+                // Reset tracking when restarting recognition
+                this.lastProcessedResultIndex = -1;
                 // Restart recognition if we're still supposed to be listening
                 this.recognition.start();
             } else {
@@ -94,9 +97,13 @@ class TranscriptionManager {
         let interim = '';
         let final = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        // Process only new results to prevent duplication on tablets
+        const startIndex = Math.max(event.resultIndex, this.lastProcessedResultIndex + 1);
+        
+        for (let i = startIndex; i < event.results.length; ++i) {
             if (event.results[i].isFinal) {
                 final += event.results[i][0].transcript;
+                this.lastProcessedResultIndex = i; // Update processed index
             } else {
                 interim += event.results[i][0].transcript;
             }
@@ -226,6 +233,7 @@ class TranscriptionManager {
         }
 
         this.isListening = true;
+        this.lastProcessedResultIndex = -1; // Reset tracking for new session
         
         try {
             this.recognition.start();
@@ -277,6 +285,7 @@ class TranscriptionManager {
     clearTranscription() {
         this.elements.finished.innerHTML = '';
         this.elements.interim.textContent = '';
+        this.lastProcessedResultIndex = -1; // Reset tracking when clearing
     }
 
     getTranscriptionText() {
