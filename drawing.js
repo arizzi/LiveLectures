@@ -81,6 +81,16 @@ class DrawingEngine {
         this.lastAutoAddHeight = 0;
         this.lastAutoAddTime = 0;
 
+    // Pen idle detection: detect when pointer is down but hasn't moved beyond a small threshold
+    this.penIdleTimer = null;           // current timeout id
+    this.penIdleAnchorPoint = null;     // world coords where the idle timer was started/reset
+    this.penIdleThreshold = 3;          // pixels movement threshold to consider "moved"
+    this.penIdleTimeout = 1000;         // ms to wait before triggering idle
+    this.penIdleNotified = false;       // whether we've already alerted for current stroke
+    // Line-conversion state when a path is converted into line-edit mode
+    this._convertedToLine = false;
+    this._convertedLineEnd = null; // { x,y } optional current end point
+
     // Scribble-as-deleter thresholds (configurable)
     // Minimum/maximum pixel extents (width/height) of a stroke to be considered a scribble deleter
     this.scribbleMinExtent = 10;
@@ -92,6 +102,74 @@ class DrawingEngine {
     // Flood-fill confirmation threshold (fraction of total canvas pixels).
     // If a fill would change more than this fraction, ask the user to confirm.
     this.floodFillConfirmFraction = 0.25; // 25% by default
+    }
+
+    // Try to detect if the current path is essentially a straight line.
+    // If yes, convert internal state so the UI can enter "line edit mode":
+    // - remove detailed points
+    // - keep first point as start
+    // - set _convertedToLine=true and _convertedLineEnd to last point
+    // Returns true when conversion took place.
+    tryConvertCurrentPathToLine() {
+        if (!this.currentPath || this.currentPath.type !== 'path' || !Array.isArray(this.currentPath.points) || this.currentPath.points.length < 2) return false;
+        console.log('Checking current path for line conversion...');
+        const pts = this.currentPath.points;
+        const p0 = pts[0];
+        const pN = pts[pts.length - 1];
+
+        // Base direction vector
+        const vx = pN.x - p0.x;
+        const vy = pN.y - p0.y;
+        const vmag = Math.hypot(vx, vy);
+        if (vmag < 1) return false; // too small to consider
+
+        const cosThreshold = Math.cos((10 * Math.PI) / 180); // 10 degrees
+
+        // Check each segment direction against base direction. Require most segments to align.
+        let goodSegmentCount = 0;
+        let totalSegments = 0;
+        for (let i = 1; i < pts.length; i++) {
+            const a = pts[i - 1];
+            const b = pts[i];
+            const sx = b.x - a.x;
+            const sy = b.y - a.y;
+            const smag = Math.hypot(sx, sy);
+            if (smag === 0) continue;
+            totalSegments++;
+            const dot = (sx * vx + sy * vy) / (smag * vmag);
+            if (dot >= cosThreshold) goodSegmentCount++;
+        }
+
+        // Require at least 70% of segments to align with the base direction
+        if (totalSegments === 0 || goodSegmentCount / totalSegments < 0.7) {
+            return false;
+        }
+
+        // Looks like a line. Convert: remove the existing path object from drawnObjects
+        // and set engine state so the UI behaves like the user is drawing a 'line'.
+        const start = { x: p0.x, y: p0.y, pressure: p0.pressure || 0.5 };
+        const end = { x: pN.x, y: pN.y, pressure: pN.pressure || 0.5 };
+
+        // Remove the currentPath object from drawnObjects (it was added at stroke start)
+        try {
+            if (this.currentPath && this.currentPath.id !== undefined) {
+                this.removeObjectsById([this.currentPath.id]);
+            }
+        } catch (err) {
+            console.debug('Failed to remove original path object during conversion', err);
+        }
+
+        // Clear currentPath (we'll switch into line tool preview mode)
+        this.currentPath = null;
+
+        // Set shape start for line preview and converted end
+        this.shapeStartX = start.x;
+        this.shapeStartY = start.y;
+        this._convertedToLine = true;
+        this._convertedLineEnd = { x: end.x, y: end.y };
+
+        // Return start/end so callers don't try to read currentPath after we've cleared it
+        return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
     }
 
     /* ==========================================================================

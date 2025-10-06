@@ -382,6 +382,44 @@ class NotesApp {
                 color,
                 size
             });
+            console.log(`Started ${tool} stroke with size ${size} at`, coords);
+
+            // Start pen idle detection: set a timer relative to the LAST point added.
+            try {
+                de.penIdleNotified = false;
+                // clear any previous timer
+                if (de.penIdleTimer) clearTimeout(de.penIdleTimer);
+                // set timer to fire after last-hit timeout
+                de.penIdleTimer = setTimeout(() => {
+                    if (!de.isDrawing || de.penIdleNotified) return;
+                    console.log('Pen idle timer fired, checking for line conversion');
+                    const path = de.currentPath;
+                    if (!path || !Array.isArray(path.points) || path.points.length < 2) return;
+                    const pts = path.points;
+                    const last = pts[pts.length - 1];
+                    const prev = pts[pts.length - 2] || pts[0];
+                    const dx = Math.abs(last.x - prev.x);
+                    const dy = Math.abs(last.y - prev.y);
+                    if (Math.hypot(dx, dy) <= (de.penIdleThreshold || 3)) {
+                        de.penIdleNotified = true;
+                        try {
+                            const converted = de.tryConvertCurrentPathToLine();
+                            if (converted) {
+                                const start = converted.start;
+                                const end = converted.end;
+                                de.shapeStartX = start.x;
+                                de.shapeStartY = start.y;
+                                de._convertedLineEnd = { x: end.x, y: end.y };
+                                // Note: do not switch the user-visible tool — we stay in pen mode
+                            }
+                        } catch (err) {
+                            console.warn('Line conversion failed', err);
+                        }
+                    }
+                }, de.penIdleTimeout || 1000);
+            } catch (err) {
+                console.warn('Pen idle detection setup failed', err);
+            }
         }
     }
 
@@ -416,6 +454,50 @@ class NotesApp {
         if ((tool === 'pen' || tool === 'eraser' || de.isErasing) && de.currentPath) {
             const pressure = (de.isErasing || tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
             de.currentPath.points.push({ ...constrainedCoords, pressure });
+
+            // Reset last-hit timer so the idle window is relative to the most recent input
+            try {
+                if (de.penIdleTimer) clearTimeout(de.penIdleTimer);
+                de.penIdleTimer = setTimeout(() => {
+                    if (!de.isDrawing || de.penIdleNotified) return;
+                    console.log('Pen idle timer fired, checking for line conversion');
+                    const path = de.currentPath;
+                    if (!path || !Array.isArray(path.points) || path.points.length < 2) return;
+                    const pts = path.points;
+                    const last = pts[pts.length - 1];
+                    const prev = pts[pts.length - 2] || pts[0];
+                    const dx = Math.abs(last.x - prev.x);
+                    const dy = Math.abs(last.y - prev.y);
+                    if (Math.hypot(dx, dy) <= (de.penIdleThreshold || 3)) {
+                        de.penIdleNotified = true;
+                        try {
+                            console.log('Pen idle detected, attempting line conversion 2');
+                            const converted = de.tryConvertCurrentPathToLine();
+                            if (converted) {
+                                const start = converted.start;
+                                const end = converted.end;
+                                de.shapeStartX = start.x;
+                                de.shapeStartY = start.y;
+                                de._convertedLineEnd = { x: end.x, y: end.y };
+                                // Note: do not switch the user-visible tool — we stay in pen mode
+                            }
+                        } catch (err) {
+                            console.warn('Line conversion failed', err);
+                        }
+                    }
+                }, de.penIdleTimeout || 1000);
+            } catch (err) {
+                console.debug('Pen idle detection update failed', err);
+            }
+
+            // If we have converted to line mode, update converted end point and show preview
+            if (de._convertedToLine) {
+                de._convertedLineEnd = { x: constrainedCoords.x, y: constrainedCoords.y };
+                // Use preview draw for line
+                this.drawShapePreview(de._convertedLineEnd, 'line');
+                // Do not redraw full document here to avoid erasing preview
+            }
+
             de.redrawAll();
         } else if (['line', 'circle', 'rect'].includes(tool)) {
             this.drawShapePreview(constrainedCoords, tool);
@@ -510,6 +592,36 @@ class NotesApp {
 
         if (de.currentPath || (['line', 'circle', 'rect'].includes(tool))) {
             this.historyManager.pushHistory(de.getState());
+        }
+
+        // If we finished while in converted-to-line mode, create a proper line object
+        if (de._convertedToLine) {
+            // create final line object using shapeStartX/Y and converted end
+            const end = de._convertedLineEnd || { x: de.shapeStartX, y: de.shapeStartY };
+            de.addObject({
+                type: 'line',
+                startX: de.shapeStartX,
+                startY: de.shapeStartY,
+                endX: end.x,
+                endY: end.y,
+                color: this.toolbarManager.getColorValue(),
+                size: this.toolbarManager.getBrushSize()
+            });
+            // Clear conversion flags
+            de._convertedToLine = false;
+            de._convertedLineEnd = null;
+        }
+
+        // Clear any pen idle detection timer/state
+        try {
+            if (de.penIdleTimer) {
+                clearTimeout(de.penIdleTimer);
+                de.penIdleTimer = null;
+            }
+            de.penIdleAnchorPoint = null;
+            de.penIdleNotified = false;
+        } catch (err) {
+            console.debug('Clearing pen idle detection failed', err);
         }
     }
 
