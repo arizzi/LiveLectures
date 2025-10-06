@@ -192,8 +192,8 @@ class NotesApp {
             if (e.pointerType === 'touch') {
                 // For touch, set a pan candidate and wait for enough movement to avoid accidental palm triggers
                 const de = this.drawingEngine;
-                // Detect large contact area that likely indicates a palm
-                const contactSize = (e.width || e.radiusX || 0) + (e.height || e.radiusY || 0);
+                // Detect large contact area that likely indicateContactThresholds a palm
+                const contactSize = (e.width || e.radiusX || 1) * (e.height || e.radiusY || 1);
                 if (contactSize / 2 >= de.palmContactThreshold) {
                     // Mark this pointer as palm and ignore
                     de.palmBlockedPointers.add(e.pointerId);

@@ -73,7 +73,7 @@ class DrawingEngine {
         this.pinchCenter = { x: 0, y: 0 };
     // Palm / pan detection
     this.panCandidate = null; // { pointerId, startX, startY }
-    this.palmContactThreshold = 32; // px contact size considered a palm
+    this.palmContactThreshold = 10; // px contact size considered a palm
     this.panStartMovementThreshold = 16; // px movement before starting pan for touch
     this.palmBlockedPointers = new Set(); // pointerIds considered palm contacts
         
