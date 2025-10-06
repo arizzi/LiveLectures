@@ -176,27 +176,10 @@ class ToolbarManager {
             }
         });
 
-        // Auto Formula toggle - multiple event types for tablet compatibility
-        this.elements.autoFormulaBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
-            console.log('🤖 Auto formula click event fired');
+        // Auto Formula toggle
+        this.elements.autoFormulaBtn.addEventListener('click', () => {
             this.toggleAutoFormula();
-        }));
-        
-        // Add touchend event for better tablet/touch support
-        this.elements.autoFormulaBtn.addEventListener('touchend', EventUtils.stopPropagation((e) => {
-            console.log('🤖 Auto formula touchend event fired');
-            e.preventDefault(); // Prevent click event from also firing
-            this.toggleAutoFormula();
-        }));
-        
-        // Add pointerup event as additional fallback
-        this.elements.autoFormulaBtn.addEventListener('pointerup', EventUtils.stopPropagation((e) => {
-            console.log('🤖 Auto formula pointerup event fired');
-            // Only handle if it's a pen or touch, and no click event will fire
-            if (e.pointerType === 'pen' || e.pointerType === 'touch') {
-                this.toggleAutoFormula();
-            }
-        }));
+        });
 
         // Transcription toggle
         this.elements.transcriptionBtn.addEventListener('click', () => {
@@ -378,31 +361,28 @@ class ToolbarManager {
         }
     }
 
+    updateAutoFormulaButton(isEnabled) {
+        if (isEnabled) {
+            this.elements.autoFormulaBtn.classList.add('auto-formula-active');
+            this.elements.autoFormulaBtn.title = 'Disable Auto Formula Recognition';
+        } else {
+            this.elements.autoFormulaBtn.classList.remove('auto-formula-active');
+            this.elements.autoFormulaBtn.title = 'Enable Auto Formula Recognition';
+        }
+    }
+
     /* ==========================================================================
        Auto Formula Toggle
        ========================================================================== */
     toggleAutoFormula() {
-        console.log('🤖 Toggle auto formula button clicked');
         const drawingEngine = window.app?.drawingEngine;
-        if (!drawingEngine) {
-            console.error('❌ DrawingEngine not found');
-            return;
-        }
+        if (!drawingEngine) return;
 
         const isEnabled = !drawingEngine.autoFormulaEnabled;
-        console.log(`🤖 Toggling auto formula: ${drawingEngine.autoFormulaEnabled} → ${isEnabled}`);
         drawingEngine.setAutoFormulaEnabled(isEnabled);
         
-        // Update button appearance
-        if (isEnabled) {
-            this.elements.autoFormulaBtn.classList.add('active');
-            this.elements.autoFormulaBtn.title = 'Disable Auto Formula Recognition';
-            console.log('✅ Button activated and styled');
-        } else {
-            this.elements.autoFormulaBtn.classList.remove('active');
-            this.elements.autoFormulaBtn.title = 'Enable Auto Formula Recognition';
-            console.log('❌ Button deactivated and styled');
-        }
+        // Update button appearance using the same pattern as transcription
+        this.updateAutoFormulaButton(isEnabled);
     }
 }
 
