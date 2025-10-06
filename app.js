@@ -128,7 +128,7 @@ class NotesApp {
         previewCanvas.addEventListener('pointerleave', (e) => this.handlePointerUp(e));
         // Native dblclick for mouse users
         previewCanvas.addEventListener('dblclick', (e) => {
-            try { this.drawingEngine.fitWidthCenter(); } catch (err) { /* ignore */ }
+            try { this.drawingEngine.fitWidthCenterHorizontal(); } catch (err) { /* ignore */ }
         });
     }
 
@@ -175,7 +175,7 @@ class NotesApp {
             this._singleFingerLastTap = now;
 
             if (this._singleFingerTapCount >= 2) {
-                try { de.fitWidthCenter(); } catch (err) { console.warn('fitWidthCenter failed on single-finger double-tap', err); }
+                try { de.fitWidthCenterHorizontal(); } catch (err) { console.warn('fitWidthCenterHorizontal failed on single-finger double-tap', err); }
                 this._singleFingerTapCount = 0;
             }
             clearTimeout(this._singleFingerTapTimeout);
@@ -213,6 +213,8 @@ class NotesApp {
             this.handleSelectTool(coords, e);
         } else if (tool === 'stroke-deleter') {
             this.startStrokeDeletion(coords, e);
+        } else if (tool === 'flood-fill') {
+            this.performFloodFill(coords);
         } else {
             this.startDrawing(coords, e, tool);
         }
@@ -579,6 +581,24 @@ class NotesApp {
         de.previewCtx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
         this._deletionPath = null;
         de.redrawAll();
+    }
+
+    /* ==========================================================================
+       Flood Fill Tool
+       ========================================================================== */
+    performFloodFill(coords) {
+        const de = this.drawingEngine;
+        const color = this.toolbarManager.getColorValue();
+        try {
+            const added = de.floodFillAt(coords.x, coords.y, color);
+            if (added) {
+                this.historyManager.pushHistory(de.getState());
+            }
+            // Always redraw canonical document (clears any partial artifacts)
+            de.redrawAll();
+        } catch (err) {
+            console.error('Flood fill failed:', err);
+        }
     }
 
     /* ==========================================================================

@@ -14,6 +14,7 @@ class ToolbarManager {
             rect: 'far fa-square',
             eraser: 'fas fa-eraser'
             , 'stroke-deleter': 'fas fa-cut'
+            , 'flood-fill': 'fas fa-fill-drip'
         };
 
         this.elements = {};

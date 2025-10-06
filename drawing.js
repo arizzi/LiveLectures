@@ -88,6 +88,10 @@ class DrawingEngine {
     // Coverage thresholds: if stroke bounding box is covered by stroke points between these values (0-1)
     this.scribbleMinCoverage = 0.70;
     this.scribbleMaxCoverage = 0.95;
+
+    // Flood-fill confirmation threshold (fraction of total canvas pixels).
+    // If a fill would change more than this fraction, ask the user to confirm.
+    this.floodFillConfirmFraction = 0.25; // 25% by default
     }
 
     /* ==========================================================================
@@ -439,6 +443,214 @@ class DrawingEngine {
         }
     }
 
+    // Render all page backgrounds and objects into the provided 2D context
+    renderAllToContext(ctx) {
+        // Draw page background similar to redrawAll but without transforms
+        ctx.save();
+        ctx.fillStyle = this.backgroundColor;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        const totalCanvasHeight = this.canvas.height;
+        const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
+        for (let i = 0; i < numPages; i++) {
+            const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
+            const pageX = this.PAGE_MARGIN;
+
+            // Draw page shadow + background + border
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
+            ctx.strokeStyle = '#d0d0d0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
+            ctx.restore();
+        }
+
+        // Draw objects in world coordinates (no view transform)
+        this.drawnObjects.forEach(obj => {
+            this.drawObject(ctx, obj);
+        });
+
+        ctx.restore();
+    }
+
+    // Perform a flood fill at world coordinates x,y with fillColor (hex like '#rrggbb').
+    // Adds an image object containing the filled area and returns the new object or null if nothing changed.
+    floodFillAt(x, y, fillColor) {
+        // Create offscreen canvas matching internal canvas size
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        const ctx = off.getContext('2d');
+
+        // Render current scene into offscreen
+        this.renderAllToContext(ctx);
+
+        // Convert world coords to pixel coords (they are the same since we rendered world)
+    const px = Math.round(x);
+    const py = Math.round(y);
+    if (px < 0 || py < 0 || px >= w || py >= h) return null;
+
+    // Determine which page the click is on and compute page bounds (world pixels)
+    const relativeY = py - this.PAGE_MARGIN;
+    if (relativeY < 0) return null;
+    const pageSlot = this.A4_HEIGHT + this.PAGE_SPACING;
+    const pageIndex = Math.floor(relativeY / pageSlot);
+    const yInPage = relativeY % pageSlot;
+    // Click in page spacing area => ignore
+    if (yInPage > this.A4_HEIGHT) return null;
+
+    const pageTop = this.PAGE_MARGIN + pageIndex * pageSlot;
+    const pageLeft = this.PAGE_MARGIN;
+    const pageRight = pageLeft + this.A4_WIDTH;
+    const pageBottom = pageTop + this.A4_HEIGHT;
+
+        const img = ctx.getImageData(0, 0, w, h);
+        const data = img.data;
+
+        // Helper to convert color
+        function hexToRgba(hex) {
+            let v = hex.replace('#','');
+            if (v.length === 3) v = v.split('').map(c => c + c).join('');
+            const r = parseInt(v.substring(0,2),16);
+            const g = parseInt(v.substring(2,4),16);
+            const b = parseInt(v.substring(4,6),16);
+            return [r,g,b,255];
+        }
+
+        const fillRgba = hexToRgba(fillColor || '#000000');
+
+        const idx = (py * w + px) * 4;
+        const targetR = data[idx];
+        const targetG = data[idx+1];
+        const targetB = data[idx+2];
+        const targetA = data[idx+3];
+
+        // If target color equals fill color, nothing to do
+        if (targetR === fillRgba[0] && targetG === fillRgba[1] && targetB === fillRgba[2] && targetA === fillRgba[3]) {
+            return null;
+        }
+
+    // Scanline flood fill (confined to the page bounds)
+        const w4 = w * 4;
+        const visited = new Uint8Array(w * h);
+        const stack = [];
+        stack.push({x: px, y: py});
+
+        let minX = w, minY = h, maxX = 0, maxY = 0;
+        const colorMatch = (i) => data[i] === targetR && data[i+1] === targetG && data[i+2] === targetB && data[i+3] === targetA;
+
+    let changedPixels = 0;
+    let asked = false;
+    const pagePixels = (pageRight - pageLeft + 1) * (pageBottom - pageTop + 1);
+    const thresholdPixels = (this.floodFillConfirmFraction > 0) ? Math.floor(this.floodFillConfirmFraction * pagePixels) : Infinity;
+
+    while (stack.length) {
+            const p = stack.pop();
+            let x0 = p.x;
+            let y0 = p.y;
+            let i0 = (y0 * w + x0);
+            if (visited[i0]) continue;
+
+            // move left (but don't cross pageLeft)
+            let xL = x0;
+            let idxL = (y0 * w + xL) * 4;
+            while (xL >= pageLeft && !visited[y0 * w + xL] && colorMatch(idxL)) {
+                xL--; idxL -= 4;
+            }
+            xL++;
+
+            // move right and fill
+            let xR = x0;
+            let idxR = (y0 * w + xR) * 4;
+            while (xR <= pageRight && !visited[y0 * w + xR] && colorMatch(idxR)) {
+                // set pixel to fill color
+                data[idxR] = fillRgba[0];
+                data[idxR+1] = fillRgba[1];
+                data[idxR+2] = fillRgba[2];
+                data[idxR+3] = fillRgba[3];
+
+                visited[y0 * w + xR] = 1;
+                changedPixels++;
+
+                // expand bounds
+                if (xR < minX) minX = xR;
+                if (xR > maxX) maxX = xR;
+                if (y0 < minY) minY = y0;
+                if (y0 > maxY) maxY = y0;
+
+                xR++; idxR += 4;
+
+                // If we've reached the confirmation threshold and haven't asked yet,
+                // prompt the user to continue. If they cancel, abort (no reversion here)
+                if (!asked && changedPixels >= thresholdPixels) {
+                    const pct = Math.round(this.floodFillConfirmFraction * 100);
+                    const proceed = confirm(`This operation has painted more than ${pct}% of the page so far. Continue?`);
+                    if (!proceed) {
+                        return null;
+                    }
+                    // user confirmed; stop asking further
+                    asked = true;
+                }
+            }
+
+            // check spans above and below (but don't cross pageTop/pageBottom)
+            for (let xi = xL; xi < xR; xi++) {
+                const above = y0 - 1;
+                const below = y0 + 1;
+                if (above >= pageTop) {
+                    const ia = (above * w + xi) * 4;
+                    if (!visited[above * w + xi] && colorMatch(ia)) stack.push({x: xi, y: above});
+                }
+                if (below <= pageBottom) {
+                    const ib = (below * w + xi) * 4;
+                    if (!visited[below * w + xi] && colorMatch(ib)) stack.push({x: xi, y: below});
+                }
+            }
+        }
+
+        if (minX > maxX || minY > maxY) return null;
+
+
+
+        // Crop to bounding box and create dataURL
+        const cropW = maxX - minX + 1;
+        const cropH = maxY - minY + 1;
+        const cropCanvas = document.createElement('canvas');
+        cropCanvas.width = cropW;
+        cropCanvas.height = cropH;
+        const cropCtx = cropCanvas.getContext('2d');
+
+        // Put the modified image data into a new ImageData for cropping
+        const cropImg = cropCtx.createImageData(cropW, cropH);
+        for (let row = 0; row < cropH; row++) {
+            const srcStart = ((minY + row) * w + minX) * 4;
+            const dstStart = row * cropW * 4;
+            for (let k = 0; k < cropW * 4; k++) {
+                cropImg.data[dstStart + k] = data[srcStart + k];
+            }
+        }
+        cropCtx.putImageData(cropImg, 0, 0);
+
+        const dataUrl = cropCanvas.toDataURL('image/png');
+
+        // Add image object to drawnObjects
+        const imgObj = {
+            type: 'image',
+            dataUrl: dataUrl,
+            startX: minX,
+            startY: minY,
+            endX: maxX,
+            endY: maxY,
+            transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
+        };
+
+        this.addObject(imgObj);
+        return imgObj;
+    }
+
     drawPageBackground(x, y, width, height) {
         if (this.backgroundType === 'white') {
             return; // Already drawn white background
@@ -552,6 +764,53 @@ class DrawingEngine {
         // worldCenter should map to screenCenter: screenCenter_px / viewScale + viewOffset = worldCenter
         this.viewOffsetX = worldCenterX - (screenCenterX_px / this.viewScale);
         this.viewOffsetY = worldCenterY - (screenCenterY_px / this.viewScale);
+
+        // Constrain panning to valid ranges (same logic as in updatePanning)
+        this.viewOffsetX = Math.max(0, Math.min(this.viewOffsetX,
+            Math.max(0, this.canvas.width - this.previewCanvas.width / this.viewScale)));
+        this.viewOffsetY = Math.max(0, Math.min(this.viewOffsetY,
+            Math.max(0, this.canvas.height - this.previewCanvas.height / this.viewScale)));
+
+        this.updateZoomLabel();
+        this.redrawAll();
+    }
+
+    // Fit the A4 page width to the preview canvas width and center ONLY horizontally.
+    // This preserves the current vertical offset (does not scroll to vertical center).
+    fitWidthCenterHorizontal(padding = 24) {
+        if (!this.previewCanvas) return;
+
+        // Use the preview canvas displayed size (CSS pixels) for layout
+        const rect = this.previewCanvas.getBoundingClientRect();
+        const previewWidth = rect.width;
+        const previewHeight = rect.height;
+        const availablePx = Math.max(100, previewWidth - padding * 2);
+
+        // target world width is the A4 page width
+        const targetWorldWidth = this.A4_WIDTH;
+
+        let desiredScale = availablePx / targetWorldWidth;
+        desiredScale = Math.max(window.NotesApp.MIN_ZOOM, Math.min(window.NotesApp.MAX_ZOOM, desiredScale));
+
+        // Compute world center X of the first page (page 0)
+        const worldCenterX = this.PAGE_MARGIN + this.A4_WIDTH / 2;
+
+        // Compute screen center in canvas internal pixels
+        const cssRect = this.previewCanvas.getBoundingClientRect();
+        const scaleX = this.previewCanvas.width / cssRect.width;
+        const screenCenterX_px = (previewWidth / 2) * scaleX;
+
+        // Preserve current vertical offset; only change horizontal offset and scale
+        const previousViewScale = this.viewScale;
+        const previousViewOffsetY = this.viewOffsetY;
+
+        this.viewScale = desiredScale;
+
+        // worldCenterX should map to screenCenter: screenCenter_px / viewScale + viewOffsetX = worldCenterX
+        this.viewOffsetX = worldCenterX - (screenCenterX_px / this.viewScale);
+
+        // Keep the previous vertical offset but clamp to valid ranges
+        this.viewOffsetY = previousViewOffsetY;
 
         // Constrain panning to valid ranges (same logic as in updatePanning)
         this.viewOffsetX = Math.max(0, Math.min(this.viewOffsetX,
