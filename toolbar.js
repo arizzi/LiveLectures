@@ -608,9 +608,19 @@ class ToolbarManager {
         
         // Special handling for LaTeX objects
         if (this.currentEditingObject.type === 'latex' && newProperties.latex) {
+            // Clear cached rendering to force re-render with new LaTeX content
+            this.currentEditingObject.renderedSvg = null;
+            this.currentEditingObject.svgWidth = null;
+            this.currentEditingObject.svgHeight = null;
+            this.currentEditingObject.isRendering = false;
+            
             // Re-render LaTeX if the source changed
             if (window.LatexRenderer && window.LatexRenderer.renderLatexObject) {
-                window.LatexRenderer.renderLatexObject(this.currentEditingObject);
+                console.log('Re-rendering LaTeX object after edit:', this.currentEditingObject.id);
+                // Use setTimeout to ensure the object is updated first
+                setTimeout(() => {
+                    window.LatexRenderer.renderLatexObject(this.currentEditingObject);
+                }, 100);
             }
         }
         
