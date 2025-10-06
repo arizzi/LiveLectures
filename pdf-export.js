@@ -568,23 +568,48 @@ class PDFExporter {
         const x = obj.x !== undefined ? obj.x : obj.startX || 0;
         const y = obj.y !== undefined ? obj.y : obj.startY || 0;
         
-        // Use the bounding box dimensions, NOT the SVG dimensions
-        const targetWidth = (obj.endX - obj.startX) || 100;
-        const targetHeight = (obj.endY - obj.startY) || 30;
+        // Use the bounding box dimensions as the container for the SVG
+        const containerWidth = (obj.endX - obj.startX) || 100;
+        const containerHeight = (obj.endY - obj.startY) || 30;
         
-        console.log(`LaTeX ${obj.id} position: (${x}, ${y}), target size: ${targetWidth}x${targetHeight}`);
-        console.log(`LaTeX ${obj.id} SVG native size: ${obj.svgWidth}x${obj.svgHeight}`);
+        // Get the native SVG dimensions
+        const svgWidth = obj.svgWidth || containerWidth;
+        const svgHeight = obj.svgHeight || containerHeight;
+
+        // Calculate aspect ratios
+        const containerRatio = containerWidth / containerHeight;
+        const svgRatio = svgWidth / svgHeight;
+
+        let renderWidth, renderHeight;
+
+        // Determine render dimensions to fit SVG inside container while preserving aspect ratio
+        if (svgRatio > containerRatio) {
+            // SVG is wider than container, fit to width
+            renderWidth = containerWidth;
+            renderHeight = containerWidth / svgRatio;
+        } else {
+            // SVG is taller than or same ratio as container, fit to height
+            renderHeight = containerHeight;
+            renderWidth = containerHeight * svgRatio;
+        }
+
+        // Center the rendered image within the container bounds
+        const drawX = x + (containerWidth - renderWidth) / 2;
+        const drawY = y + (containerHeight - renderHeight) / 2;
+        
+        console.log(`LaTeX ${obj.id} position: (${x}, ${y}), container: ${containerWidth}x${containerHeight}`);
+        console.log(`LaTeX ${obj.id} SVG native size: ${svgWidth}x${svgHeight}, render size: ${renderWidth}x${renderHeight}`);
         
         // Check if we have rendered SVG for this LaTeX object
         if (obj.renderedSvg) {
             console.log('Found rendered SVG for LaTeX object', obj.id);
             try {
-                // Render SVG directly at the target size with high DPI
-                const imageData = await this.svgToImageData(obj.renderedSvg, targetWidth, targetHeight);
+                // Render SVG to an image canvas at the correct aspect ratio
+                const imageData = await this.svgToImageData(obj.renderedSvg, renderWidth, renderHeight);
                 console.log('Successfully converted SVG to target size for LaTeX', obj.id);
                 
-                // Draw at the target size (no additional scaling needed)
-                ctx.drawImage(imageData, x, y, targetWidth, targetHeight);
+                // Draw the correctly-sized image at the centered position
+                ctx.drawImage(imageData, drawX, drawY, renderWidth, renderHeight);
                 return;
             } catch (error) {
                 console.warn('Failed to render LaTeX SVG to PDF:', error);
@@ -599,8 +624,8 @@ class PDFExporter {
         ctx.fillStyle = '#f0f0f0';
         ctx.lineWidth = 1;
         
-        ctx.fillRect(x, y, targetWidth, targetHeight);
-        ctx.strokeRect(x, y, targetWidth, targetHeight);
+        ctx.fillRect(x, y, containerWidth, containerHeight);
+        ctx.strokeRect(x, y, containerWidth, containerHeight);
         
         // Draw LaTeX indicator
         ctx.fillStyle = '#666666';
