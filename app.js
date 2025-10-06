@@ -8,6 +8,10 @@ class NotesApp {
         this.toolbarManager = null;
         this.historyManager = null;
         this.sidebarManager = null;
+    // single-finger double-tap/double-click detection
+    this._singleFingerLastTap = 0;
+    this._singleFingerTapCount = 0;
+    this._singleFingerTapTimeout = null;
         
         // Wait for DOM to be ready
         if (document.readyState === 'loading') {
@@ -55,6 +59,14 @@ class NotesApp {
         const canvasContainer = document.querySelector('.canvas-container');
         
         this.drawingEngine.initializeCanvases(canvas, previewCanvas, canvasContainer);
+        // Default to fit width + center after initialization
+        setTimeout(() => {
+            try {
+                this.drawingEngine.fitWidthCenter();
+            } catch (e) {
+                console.warn('fitWidthCenter failed at init:', e);
+            }
+        }, 50);
         
         // Setup resize observer with mobile-specific handling
         let resizeTimeout;
@@ -63,6 +75,12 @@ class NotesApp {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
                 this.drawingEngine.resizeCanvases();
+                // Re-apply fit+center after canvas resize
+                try {
+                    this.drawingEngine.fitWidthCenter();
+                } catch (e) {
+                    console.warn('fitWidthCenter failed on resize:', e);
+                }
             }, 150);
         });
         
@@ -70,6 +88,11 @@ class NotesApp {
         window.addEventListener('orientationchange', () => {
             setTimeout(() => {
                 this.drawingEngine.resizeCanvases();
+                try {
+                    this.drawingEngine.fitWidthCenter();
+                } catch (e) {
+                    console.warn('fitWidthCenter failed on orientationchange:', e);
+                }
             }, 300);
         });
         
@@ -79,6 +102,11 @@ class NotesApp {
                 clearTimeout(resizeTimeout);
                 resizeTimeout = setTimeout(() => {
                     this.drawingEngine.resizeCanvases();
+                    try {
+                        this.drawingEngine.fitWidthCenter();
+                    } catch (e) {
+                        console.warn('fitWidthCenter failed on visualViewport resize:', e);
+                    }
                 }, 100);
             });
         }
@@ -98,6 +126,10 @@ class NotesApp {
         previewCanvas.addEventListener('pointerup', (e) => this.handlePointerUp(e));
         previewCanvas.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
         previewCanvas.addEventListener('pointerleave', (e) => this.handlePointerUp(e));
+        // Native dblclick for mouse users
+        previewCanvas.addEventListener('dblclick', (e) => {
+            try { this.drawingEngine.fitWidthCenter(); } catch (err) { /* ignore */ }
+        });
     }
 
     setupGestureEvents() {
@@ -130,16 +162,46 @@ class NotesApp {
             return;
         }
 
-        // Handle stylus eraser
-        if (e.pointerType === 'pen' && e.buttons === 2) {
+        // Single-finger touch double-tap detection (for fit to width + center)
+        // We'll detect two quick single-finger taps in succession
+        if (de.pointers.size === 1 && e.pointerType === 'touch') {
+            const now = performance.now();
+            const DOUBLE_TAP_WINDOW = 350; // ms
+            if ((now - this._singleFingerLastTap) <= DOUBLE_TAP_WINDOW) {
+                this._singleFingerTapCount += 1;
+            } else {
+                this._singleFingerTapCount = 1;
+            }
+            this._singleFingerLastTap = now;
+
+            if (this._singleFingerTapCount >= 2) {
+                try { de.fitWidthCenter(); } catch (err) { console.warn('fitWidthCenter failed on single-finger double-tap', err); }
+                this._singleFingerTapCount = 0;
+            }
+            clearTimeout(this._singleFingerTapTimeout);
+            this._singleFingerTapTimeout = setTimeout(() => { this._singleFingerTapCount = 0; }, DOUBLE_TAP_WINDOW + 50);
+        }
+
+        // Handle stylus eraser (barrel button) or large tilt -> treat as eraser
+        if (this.isPenEraserEvent && this.isPenEraserEvent(e)) {
             this.startErasing(coords, e);
             return;
         }
 
         // Handle touch panning
-        if (e.pointerType === 'touch') {
-            this.startPanning(e);
-            return;
+            if (e.pointerType === 'touch') {
+                // For touch, set a pan candidate and wait for enough movement to avoid accidental palm triggers
+                const de = this.drawingEngine;
+                // Detect large contact area that likely indicates a palm
+                const contactSize = (e.width || e.radiusX || 0) + (e.height || e.radiusY || 0);
+                if (contactSize / 2 >= de.palmContactThreshold) {
+                    // Mark this pointer as palm and ignore
+                    de.palmBlockedPointers.add(e.pointerId);
+                    return;
+                }
+
+                de.panCandidate = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+                return;
         }
 
         // Handle tool-specific actions
@@ -151,6 +213,32 @@ class NotesApp {
             this.handleSelectTool(coords, e);
         } else {
             this.startDrawing(coords, e, tool);
+        }
+    }
+
+    // Returns true when a pen event should be treated as an eraser.
+    // Conditions:
+    // - Absolute tiltX or tiltY greater than 30 degrees
+    // - Barrel/side button pressed (buttons bitmask includes 2)
+    isPenEraserEvent(e) {
+        try {
+            if (!e) return false;
+            if (e.pointerType !== 'pen') return false;
+
+            const tiltX = typeof e.tiltX === 'number' ? e.tiltX : 0;
+            const tiltY = typeof e.tiltY === 'number' ? e.tiltY : 0;
+
+            const tiltThreshold = 40; // degrees
+            const tiltEraser = Math.abs(tiltX) > tiltThreshold || Math.abs(tiltY) > tiltThreshold;
+
+            // buttons is a bitmask; many S-Pen implementations use bit 1 (value 2) for the barrel button
+            const buttons = typeof e.buttons === 'number' ? e.buttons : 0;
+            const barrelPressed = (buttons & 2) !== 0;
+
+            return tiltEraser || barrelPressed;
+        } catch (err) {
+            console.debug('isPenEraserEvent check failed', err);
+            return false;
         }
     }
 
@@ -167,10 +255,31 @@ class NotesApp {
         }
 
         // Handle panning
-        if (de.isPanning) {
-            this.updatePanning(e);
-            return;
-        }
+            // Handle panning: if already panning, update immediately
+            if (de.isPanning) {
+                this.updatePanning(e);
+                return;
+            }
+
+            // If there's a pan candidate (from touch), check movement threshold to promote to actual pan
+            if (de.panCandidate && de.panCandidate.pointerId === e.pointerId) {
+                // If this pointer was previously detected as palm, ignore
+                if (de.palmBlockedPointers.has(e.pointerId)) {
+                    return;
+                }
+
+                const dx = e.clientX - de.panCandidate.startX;
+                const dy = e.clientY - de.panCandidate.startY;
+                const dist = Math.hypot(dx, dy);
+                if (dist >= de.panStartMovementThreshold) {
+                    // Promote to active panning
+                    this.startPanning(e);
+                    // re-run update to apply this move as first pan delta
+                    this.updatePanning(e);
+                    de.panCandidate = null;
+                }
+                return;
+            }
 
         // Handle selection operations
         if (de.selectionDrag) {
@@ -180,6 +289,23 @@ class NotesApp {
 
         // Handle drawing
         if (de.isDrawing) {
+            // If this is a pen, detect tilt/button changes mid-stroke and split path
+            if (e.pointerType === 'pen') {
+                const wasErasing = de.isErasing;
+                const nowErasing = this.isPenEraserEvent ? this.isPenEraserEvent(e) : (e.buttons === 2);
+                if (wasErasing !== nowErasing) {
+                    // Finish current path and start a new one with the new mode
+                    // emulate pointerup then pointerdown behavior to avoid mixed points
+                    this.finishDrawing(e);
+                    // start new drawing with the same coords
+                    const coords = de.getCanvasCoords(e);
+                    const tool = nowErasing ? 'eraser' : 'pen';
+                    this.startDrawing(coords, e, tool);
+                    // Ensure engine's erasing flag matches
+                    de.isErasing = nowErasing;
+                }
+            }
+
             this.updateDrawing(e);
         }
     }
@@ -189,6 +315,14 @@ class NotesApp {
         
         de.previewCanvas.releasePointerCapture(e.pointerId);
         de.pointers.delete(e.pointerId);
+
+        // Clear any pan candidate or palm mark for this pointer
+        if (de.panCandidate && de.panCandidate.pointerId === e.pointerId) {
+            de.panCandidate = null;
+        }
+        if (de.palmBlockedPointers.has(e.pointerId)) {
+            de.palmBlockedPointers.delete(e.pointerId);
+        }
 
         if (de.isPinching && de.pointers.size < 2) {
             de.isPinching = false;

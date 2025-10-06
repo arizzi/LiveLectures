@@ -479,7 +479,7 @@ html, body {
     
     /* Adjust sidebar behavior on mobile */
     .sidebar {
-        width: 35%;
+        width: 0%;
         min-width: 250px;
         max-width: 70%;
     }

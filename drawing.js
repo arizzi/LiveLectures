@@ -12,14 +12,15 @@ class DrawingEngine {
         this.viewOffsetY = 0;
         this.viewScale = 1;
         
-        // A4 portrait dimensions at 96 DPI
-        this.A4_WIDTH = 794;   // 210mm at 96 DPI
-        this.A4_HEIGHT = 1123; // 297mm at 96 DPI
+        // A4 portrait dimensions at DPI that assumes screen width=A4 width
+        //get the A4 width from browser width
+        this.A4_WIDTH = window.innerWidth ;
+        this.A4_HEIGHT = this.A4_WIDTH * 1.4142; // A4 height is sqrt(2) times width
         this.PAGE_HEIGHT = this.A4_HEIGHT;
         
         // Page margins and spacing
-        this.PAGE_MARGIN = 40; // Margin around each page
-        this.PAGE_SPACING = 20; // Space between pages
+        this.PAGE_MARGIN = 5; // Margin around each page
+        this.PAGE_SPACING = 5; // Space between pages
         this.CANVAS_WIDTH = this.A4_WIDTH + (2 * this.PAGE_MARGIN);
         
         // Background settings
@@ -70,6 +71,11 @@ class DrawingEngine {
         this.pinchStartDist = 0;
         this.pinchStartScale = 1;
         this.pinchCenter = { x: 0, y: 0 };
+    // Palm / pan detection
+    this.panCandidate = null; // { pointerId, startX, startY }
+    this.palmContactThreshold = 32; // px contact size considered a palm
+    this.panStartMovementThreshold = 16; // px movement before starting pan for touch
+    this.palmBlockedPointers = new Set(); // pointerIds considered palm contacts
         
         // Auto page add throttling
         this.lastAutoAddHeight = 0;
@@ -502,6 +508,51 @@ class DrawingEngine {
         if (zoomEl) {
             zoomEl.textContent = Math.round(this.viewScale * 100) + '%';
         }
+    }
+
+    // Fit the A4 page width to the preview canvas width and center the view
+    fitWidthCenter(padding = 24) {
+        if (!this.previewCanvas) return;
+
+        // Use the preview canvas displayed size (CSS pixels) for layout
+        const rect = this.previewCanvas.getBoundingClientRect();
+        const previewWidth = rect.width;
+        const previewHeight = rect.height;
+        const availablePx = Math.max(100, previewWidth - padding * 2);
+
+        // target world width is the A4 page width
+        const targetWorldWidth = this.A4_WIDTH;
+
+        let desiredScale = availablePx / targetWorldWidth;
+        desiredScale = Math.max(window.NotesApp.MIN_ZOOM, Math.min(window.NotesApp.MAX_ZOOM, desiredScale));
+
+        // Compute world center of the first page (page 0)
+        const worldCenterX = this.PAGE_MARGIN + this.A4_WIDTH / 2;
+        const worldCenterY = this.PAGE_MARGIN + this.A4_HEIGHT / 2;
+
+        // Compute screen center in canvas internal pixels
+        const cssRect = this.previewCanvas.getBoundingClientRect();
+        const scaleX = this.previewCanvas.width / cssRect.width;
+        const scaleY = this.previewCanvas.height / cssRect.height;
+        const screenCenterX_px = (previewWidth / 2) * scaleX;
+        const screenCenterY_px = (previewHeight / 2) * scaleY;
+
+        // Set the scale and compute offsets so the world center of the first page
+        // is positioned at the screen center (in canvas internal pixels)
+        this.viewScale = desiredScale;
+
+        // worldCenter should map to screenCenter: screenCenter_px / viewScale + viewOffset = worldCenter
+        this.viewOffsetX = worldCenterX - (screenCenterX_px / this.viewScale);
+        this.viewOffsetY = worldCenterY - (screenCenterY_px / this.viewScale);
+
+        // Constrain panning to valid ranges (same logic as in updatePanning)
+        this.viewOffsetX = Math.max(0, Math.min(this.viewOffsetX,
+            Math.max(0, this.canvas.width - this.previewCanvas.width / this.viewScale)));
+        this.viewOffsetY = Math.max(0, Math.min(this.viewOffsetY,
+            Math.max(0, this.canvas.height - this.previewCanvas.height / this.viewScale)));
+
+        this.updateZoomLabel();
+        this.redrawAll();
     }
 
     /* ==========================================================================

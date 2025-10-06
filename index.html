@@ -126,6 +126,10 @@
                             <i class="fas fa-upload"></i>
                             <span>Import JSON</span>
                         </div>
+                        <div class="submenu-item" id="clearBtn">
+                            <i class="fas fa-broom"></i>
+                            <span>Clear All</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -137,14 +141,40 @@
                 <div class="toolbar-button" id="convertToLatexBtn" title="Convert to LaTeX">
                     <i class="fas fa-magic"></i>
                 </div>
+                <div class="toolbar-button" id="convertToSvgBtn" title="Convert to SVG">
+                    <i class="fas fa-file-image"></i>
+                </div>
                 <div class="toolbar-button" id="autoFormulaBtn" title="Toggle Auto Formula Recognition">
                     <i class="fas fa-robot"></i>
                 </div>
                 <div class="toolbar-button" id="transcriptionBtn" title="Toggle Transcription">
                     <i class="fas fa-microphone"></i>
                 </div>
-                <div class="toolbar-button" id="clearBtn" title="Clear All">
-                    <i class="fas fa-broom"></i>
+                <!-- Zoom submenu -->
+                <div class="toolbar-button" id="zoomMenuBtn" title="Zoom">
+                    <i class="fas fa-search"></i>
+                    <span class="dropdown-arrow">▼</span>
+                    <div class="submenu" id="zoomSubmenu">
+                        <div class="submenu-item" id="zoomInBtn">
+                            <i class="fas fa-search-plus"></i>
+                            <span>Zoom In</span>
+                        </div>
+                        <div class="submenu-item" id="zoomOutBtn">
+                            <i class="fas fa-search-minus"></i>
+                            <span>Zoom Out</span>
+                        </div>
+                        <div class="submenu-item" id="resetZoomBtn">
+                            <i class="fas fa-search"></i>
+                            <span>Reset Zoom</span>
+                        </div>
+                        <div class="submenu-item" id="fitWidthBtn">
+                            <i class="fas fa-arrows-alt-h"></i>
+                            <span>Fit Width</span>
+                        </div>
+                        <div class="submenu-item" id="zoomLabelItem" style="cursor:default;">
+                            <span id="zoomLabel">100%</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="toolbar-button" id="fullscreenBtn" title="Full Screen">
                     <i class="fas fa-expand"></i>
@@ -152,7 +182,6 @@
             </div>
 
             <!-- Settings and Version -->
-            <span class="version-badge">v2.1001</span>
             <div class="toolbar-group">
                 <div class="toolbar-button" id="settingsBtn" title="Settings">
                     <i class="fas fa-cog"></i>
@@ -171,13 +200,14 @@
                     </div>
                 </div>
             </div>
+            <span class="version-badge">v2.1001</span>
 
             <input type="file" id="importFileInput" accept="application/json" class="hidden-input" />
         </div>
         
         <div class="content-area">
             <div class="main-content">
-                <div class="sidebar-toggle-container" id="sidebarToggleContainer" style="display: none;">
+                <div class="sidebar-toggle-container" id="sidebarToggleContainer">
                     <div class="sidebar-toggle-btn" id="sidebarToggleBtn">▶</div>
                 </div>
                 <div class="canvas-container">
@@ -185,7 +215,7 @@
                     <canvas id="preview-canvas"></canvas>
                 </div>
             </div>
-            <div class="sidebar" id="sidebar">
+            <div class="sidebar hidden" id="sidebar">
                 <div class="resize-handle" id="resizeHandle"></div>
                 <div class="hide-toggle" id="hideToggle">◀</div>
                 <div class="latex-container">
@@ -193,6 +223,12 @@
                     <div id="ai-status">Click "Convert to LaTeX" to analyze the canvas.</div>
                     <div id="latex-output"></div>
                     <button id="addLatexToCanvasBtn" style="display: none; margin-top: 10px;">Add to Canvas</button>
+                </div>
+                <div class="svg-container" style="margin-top:12px;">
+                    <h3>SVG Output</h3>
+                    <div id="ai-svg-status">Click "Convert to SVG" to analyze the canvas.</div>
+                    <pre id="svg-output" style="white-space:pre-wrap; max-height:200px; overflow:auto; background:#fff; padding:8px; border:1px solid #eee;"></pre>
+                    <button id="addSvgToCanvasBtn" style="display: none; margin-top: 10px;">Add SVG to Canvas</button>
                 </div>
                 <div class="transcription-display">
                     <h3>Audio Transcription</h3>
@@ -271,6 +307,7 @@
     <script src="drawing.js"></script>
     <script src="toolbar.js"></script>
     <script src="latex.js"></script>
+    <script src="svg.js"></script>
     <script src="transcription.js"></script>
     <script src="pdf-export.js"></script>
     <script src="app.js"></script>

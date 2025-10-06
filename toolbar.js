@@ -46,7 +46,16 @@ class ToolbarManager {
         this.elements.exportJsonBtn = document.getElementById('exportJsonBtn');
         this.elements.importJsonBtn = document.getElementById('importJsonBtn');
         this.elements.importFileInput = document.getElementById('importFileInput');
-        this.elements.clearBtn = document.getElementById('clearBtn');
+    // Note: clearBtn moved into file submenu in index.html
+    this.elements.clearBtn = document.getElementById('clearBtn');
+    // Zoom submenu controls
+    this.elements.zoomMenuBtn = document.getElementById('zoomMenuBtn');
+    this.elements.zoomSubmenu = document.getElementById('zoomSubmenu');
+    this.elements.zoomInBtn = document.getElementById('zoomInBtn');
+    this.elements.zoomOutBtn = document.getElementById('zoomOutBtn');
+    this.elements.resetZoomBtn = document.getElementById('resetZoomBtn');
+    this.elements.fitWidthBtn = document.getElementById('fitWidthBtn');
+    this.elements.zoomLabel = document.getElementById('zoomLabel');
 
         // Color and size controls
         this.elements.colorPicker = document.getElementById('colorPicker');
@@ -54,6 +63,7 @@ class ToolbarManager {
 
         // AI and transcription
         this.elements.convertToLatexBtn = document.getElementById('convertToLatexBtn');
+    this.elements.convertToSvgBtn = document.getElementById('convertToSvgBtn');
         this.elements.autoFormulaBtn = document.getElementById('autoFormulaBtn');
         this.elements.transcriptionBtn = document.getElementById('transcriptionBtn');
     }
@@ -78,24 +88,32 @@ class ToolbarManager {
         });
 
         // Drawing tools submenu
-        this.elements.drawingToolBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
-            this.toggleSubmenu(this.elements.drawingToolBtn, this.elements.drawingSubmenu);
-        }));
+        if (this.elements.drawingToolBtn) {
+            this.elements.drawingToolBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
+                this.toggleSubmenu(this.elements.drawingToolBtn, this.elements.drawingSubmenu);
+            }));
+        }
 
         // File actions submenu
-        this.elements.fileActionsBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
-            this.toggleSubmenu(this.elements.fileActionsBtn, this.elements.fileSubmenu);
-        }));
+        if (this.elements.fileActionsBtn) {
+            this.elements.fileActionsBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
+                this.toggleSubmenu(this.elements.fileActionsBtn, this.elements.fileSubmenu);
+            }));
+        }
 
         // Settings submenu
-        this.elements.settingsBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
-            this.toggleSubmenu(this.elements.settingsBtn, this.elements.settingsSubmenu);
-        }));
+        if (this.elements.settingsBtn) {
+            this.elements.settingsBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
+                this.toggleSubmenu(this.elements.settingsBtn, this.elements.settingsSubmenu);
+            }));
+        }
 
         // API Key setting
-        this.elements.setApiKeyBtn.addEventListener('click', () => {
-            this.handleApiKeySetup();
-        });
+        if (this.elements.setApiKeyBtn) {
+            this.elements.setApiKeyBtn.addEventListener('click', () => {
+                this.handleApiKeySetup();
+            });
+        }
     }
 
     setupToolSelection() {
@@ -138,18 +156,67 @@ class ToolbarManager {
             }
         });
 
+        // Zoom controls & submenu wiring
+        if (this.elements.zoomMenuBtn && this.elements.zoomSubmenu) {
+            this.elements.zoomMenuBtn.addEventListener('click', EventUtils.stopPropagation((e) => {
+                this.toggleSubmenu(this.elements.zoomMenuBtn, this.elements.zoomSubmenu);
+            }));
+        }
+
+        if (this.elements.zoomInBtn) {
+            this.elements.zoomInBtn.addEventListener('click', () => {
+                const de = window.app?.drawingEngine;
+                if (de) {
+                    de.setZoom(de.viewScale + window.NotesApp.ZOOM_STEP);
+                }
+            });
+        }
+
+        if (this.elements.zoomOutBtn) {
+            this.elements.zoomOutBtn.addEventListener('click', () => {
+                const de = window.app?.drawingEngine;
+                if (de) {
+                    de.setZoom(de.viewScale - window.NotesApp.ZOOM_STEP);
+                }
+            });
+        }
+
+        if (this.elements.resetZoomBtn) {
+            this.elements.resetZoomBtn.addEventListener('click', () => {
+                const de = window.app?.drawingEngine;
+                if (de) {
+                    de.viewScale = 1;
+                    de.updateZoomLabel();
+                    de.redrawAll();
+                }
+            });
+        }
+
+        if (this.elements.fitWidthBtn) {
+            this.elements.fitWidthBtn.addEventListener('click', () => {
+                const de = window.app?.drawingEngine;
+                if (!de) return;
+                de.fitWidthCenter();
+            });
+        }
+
         // Background Selection
         this.elements.backgroundBtn.addEventListener('click', () => {
             this.showBackgroundModal();
         });
 
         // Clear All
-        this.elements.clearBtn.addEventListener('click', () => {
-            if (!confirm('Clear all content on all pages?')) return;
-            if (window.app && window.app.clearAll) {
-                window.app.clearAll();
-            }
-        });
+        if (this.elements.clearBtn) {
+            this.elements.clearBtn.addEventListener('click', () => {
+                // Keep same UX as before: confirmation and call clearAll on app
+                if (!confirm('Clear all content on all pages?')) return;
+                if (window.app && window.app.clearAll) {
+                    window.app.clearAll();
+                }
+                // Hide submenu after action
+                this.hideAllSubmenus();
+            });
+        }
 
         // File operations
         this.elements.exportPdfBtn.addEventListener('click', async () => {
@@ -205,7 +272,7 @@ class ToolbarManager {
         });
 
         // LaTeX conversion
-        this.elements.convertToLatexBtn.addEventListener('click', () => {
+        this.elements.convertToLatexBtn.addEventListener('click', async () => {
             // Check if auto-formula mode is enabled
             const drawingEngine = window.app?.drawingEngine;
             if (drawingEngine && drawingEngine.autoFormulaEnabled) {
@@ -215,22 +282,93 @@ class ToolbarManager {
                 // Check if we have auto-formula strokes to convert
                 if (drawingEngine.autoFormulaStrokeIds.size > 0) {
                     console.log(`🚀 Triggering auto-formula with ${drawingEngine.autoFormulaStrokeIds.size} tracked strokes`);
+                    // Trigger auto formula; the drawing engine will auto-add after conversion
                     drawingEngine.triggerAutoFormula('manual_button');
                 } else {
                     console.log('📝 No auto-formula strokes tracked, falling back to normal manual conversion');
                     // Fall back to normal manual conversion if no auto-formula strokes
                     if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
-                        window.LatexRenderer.convertToLatex();
+                        // perform manual conversion and then auto-add result when available
+                        try {
+                            await window.LatexRenderer.convertToLatex();
+                            // Auto-add to canvas if conversion produced content and Add button is visible
+                            if (window.LatexRenderer.lastLatexResult && window.LatexRenderer.lastLatexResult.trim()) {
+                                // If the add button is visible (renderer shows it), call addLatexToCanvas
+                                if (window.LatexRenderer.elements.addLatexBtn.style.display !== 'none') {
+                                    window.LatexRenderer.addLatexToCanvas();
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Manual LaTeX conversion failed:', e);
+                        }
                     }
                 }
             } else {
                 // Normal manual conversion
                 if (window.LatexRenderer && window.LatexRenderer.convertToLatex) {
-                    console.log('🪄 Manual LaTeX conversion (normal mode)');
-                    window.LatexRenderer.convertToLatex();
+                    console.log('🪄 Manual LaTeX conversion (normal mode) - will auto-add on success');
+                    try {
+                        await window.LatexRenderer.convertToLatex();
+                        if (window.LatexRenderer.lastLatexResult && window.LatexRenderer.lastLatexResult.trim()) {
+                            if (window.LatexRenderer.elements.addLatexBtn.style.display !== 'none') {
+                                window.LatexRenderer.addLatexToCanvas();
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Manual LaTeX conversion failed:', e);
+                    }
                 }
             }
         });
+
+        // SVG conversion
+        if (this.elements.convertToSvgBtn) {
+            this.elements.convertToSvgBtn.addEventListener('click', async () => {
+                console.log('Convert to SVG button clicked');
+                // Mirror LaTeX behavior: respect auto-formula mode if appropriate
+                const drawingEngine = window.app?.drawingEngine;
+                console.log('drawingEngine present:', !!drawingEngine);
+                console.log('SvgConverter available:', !!window.SvgConverter);
+                if (drawingEngine && drawingEngine.autoFormulaEnabled) {
+                    // If auto formula mode is enabled, prefer engine's auto flow
+                    if (drawingEngine.autoFormulaStrokeIds.size > 0) {
+                        // Trigger auto formula recognition; drawing engine may handle auto-add
+                        drawingEngine.triggerAutoFormula && drawingEngine.triggerAutoFormula('convert_to_svg_button');
+                    } else {
+                        // Fallback: call converter manually and add
+                        if (window.SvgConverter && window.SvgConverter.convertToSvg) {
+                            try {
+                                console.log('Calling SvgConverter.convertToSvg() (fallback)');
+                                await window.SvgConverter.convertToSvg();
+                                console.log('SvgConverter finished convertToSvg');
+                                if (window.SvgConverter.lastSvgResult && window.SvgConverter.lastSvgResult.trim()) {
+                                    if (window.SvgConverter.elements.addSvgBtn && window.SvgConverter.elements.addSvgBtn.style.display !== 'none') {
+                                        window.SvgConverter.addSvgToCanvas();
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Manual SVG conversion failed:', e);
+                            }
+                        }
+                    }
+                } else {
+                    if (window.SvgConverter && window.SvgConverter.convertToSvg) {
+                        console.log('Calling SvgConverter.convertToSvg() (normal)');
+                        try {
+                            await window.SvgConverter.convertToSvg();
+                            console.log('SvgConverter finished convertToSvg');
+                            if (window.SvgConverter.lastSvgResult && window.SvgConverter.lastSvgResult.trim()) {
+                                if (window.SvgConverter.elements.addSvgBtn && window.SvgConverter.elements.addSvgBtn.style.display !== 'none') {
+                                    window.SvgConverter.addSvgToCanvas();
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Manual SVG conversion failed:', e);
+                        }
+                    }
+                }
+            });
+        }
 
         // Auto Formula toggle
         this.elements.autoFormulaBtn.addEventListener('click', () => {
