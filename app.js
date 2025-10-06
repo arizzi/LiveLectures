@@ -634,18 +634,39 @@ class NotesApp {
         const sidebar = document.getElementById('sidebar');
         const resizeHandle = document.getElementById('resizeHandle');
         const hideToggle = document.getElementById('hideToggle');
+        const sidebarToggleContainer = document.getElementById('sidebarToggleContainer');
+        const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
         const contentArea = document.querySelector('.content-area');
         
         let isResizing = false;
         let sidebarWidth = 30; // percentage
 
+        const toggleSidebar = () => {
+            if (sidebar.classList.contains('hidden')) {
+                // Show sidebar
+                sidebar.classList.remove('hidden');
+                sidebar.style.width = sidebarWidth + '%';
+                hideToggle.textContent = '◀';
+                hideToggle.title = 'Hide sidebar';
+                sidebarToggleContainer.style.display = 'none';
+            } else {
+                // Hide sidebar
+                sidebar.classList.add('hidden');
+                hideToggle.textContent = '▶';
+                hideToggle.title = 'Show sidebar';
+                sidebarToggleContainer.style.display = 'block';
+            }
+            this.drawingEngine.resizeCanvases();
+        };
+
         const handleResize = (e) => {
-            if (!isResizing) return;
+            if (!isResizing || sidebar.classList.contains('hidden')) return;
             const containerWidth = contentArea.offsetWidth;
             const newWidth = containerWidth - e.clientX;
             const percentage = Math.max(15, Math.min(60, (newWidth / containerWidth) * 100));
             sidebarWidth = percentage;
             sidebar.style.width = percentage + '%';
+            this.drawingEngine.resizeCanvases();
         };
 
         const stopResize = () => {
@@ -655,25 +676,15 @@ class NotesApp {
         };
 
         resizeHandle.addEventListener('mousedown', (e) => {
+            if (sidebar.classList.contains('hidden')) return;
             isResizing = true;
             document.addEventListener('mousemove', handleResize);
             document.addEventListener('mouseup', stopResize);
             e.preventDefault();
         });
 
-        hideToggle.addEventListener('click', () => {
-            if (sidebar.classList.contains('hidden')) {
-                sidebar.classList.remove('hidden');
-                sidebar.style.width = sidebarWidth + '%';
-                hideToggle.textContent = '◀';
-                hideToggle.title = 'Hide sidebar';
-            } else {
-                sidebar.classList.add('hidden');
-                hideToggle.textContent = '▶';
-                hideToggle.title = 'Show sidebar';
-            }
-            this.drawingEngine.resizeCanvases();
-        });
+        hideToggle.addEventListener('click', toggleSidebar);
+        sidebarToggleBtn.addEventListener('click', toggleSidebar);
     }
 
     /* ==========================================================================

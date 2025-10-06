@@ -34,6 +34,7 @@ html, body {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 /* ==========================================================================
@@ -266,7 +267,9 @@ html, body {
 .sidebar.hidden {
     width: 0;
     min-width: 0;
+    max-width: 0;
     overflow: hidden;
+    border-left: none;
 }
 
 .resize-handle {
@@ -315,6 +318,43 @@ html, body {
 }
 
 .hide-toggle:hover {
+    background: #e0e0e0;
+}
+
+.sidebar.hidden .hide-toggle {
+    display: none;
+}
+
+.sidebar.hidden .resize-handle {
+    display: none;
+}
+
+/* Toggle button container for when sidebar is hidden */
+.sidebar-toggle-container {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 102;
+}
+
+.sidebar-toggle-btn {
+    width: 20px;
+    height: 40px;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #666;
+    user-select: none;
+}
+
+.sidebar-toggle-btn:hover {
     background: #e0e0e0;
 }
 
