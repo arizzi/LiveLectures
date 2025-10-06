@@ -211,6 +211,8 @@ class NotesApp {
             this.startPanning(e);
         } else if (tool === 'select') {
             this.handleSelectTool(coords, e);
+        } else if (tool === 'stroke-deleter') {
+            this.startStrokeDeletion(coords, e);
         } else {
             this.startDrawing(coords, e, tool);
         }
@@ -287,7 +289,7 @@ class NotesApp {
             return;
         }
 
-        // Handle drawing
+    // Handle drawing
         if (de.isDrawing) {
             // If this is a pen, detect tilt/button changes mid-stroke and split path
             if (e.pointerType === 'pen') {
@@ -307,6 +309,8 @@ class NotesApp {
             }
 
             this.updateDrawing(e);
+        } else if (this._isDeletingStrokes) {
+            this.updateStrokeDeletion(e);
         }
     }
 
@@ -330,6 +334,10 @@ class NotesApp {
 
         if (de.isDrawing) {
             this.finishDrawing(e);
+        }
+
+        if (this._isDeletingStrokes) {
+            this.finishStrokeDeletion(e);
         }
 
         if (de.selectionDrag) {
@@ -466,6 +474,76 @@ class NotesApp {
         if (de.currentPath || (['line', 'circle', 'rect'].includes(tool))) {
             this.historyManager.pushHistory(de.getState());
         }
+    }
+
+    /* ==========================================================================
+       Stroke Deleter Tool
+       ========================================================================== */
+    startStrokeDeletion(coords, e) {
+        const de = this.drawingEngine;
+        if (!de.isWithinPageBounds(coords.x, coords.y)) {
+            coords = de.constrainToPageBounds(coords.x, coords.y);
+        }
+
+        this._isDeletingStrokes = true;
+        this._deletionPath = [{ x: coords.x, y: coords.y }];
+
+        // Create a visible preview path on the preview canvas
+        de.previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+        de.previewCtx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
+        de.previewCtx.save();
+        de.previewCtx.strokeStyle = 'rgba(220,20,60,0.9)';
+        de.previewCtx.lineWidth = 4;
+        de.previewCtx.lineCap = 'round';
+        de.previewCtx.beginPath();
+        const s = de.worldToScreen(coords);
+        de.previewCtx.moveTo(s.x, s.y);
+        de.previewCtx.stroke();
+    }
+
+    updateStrokeDeletion(e) {
+        const de = this.drawingEngine;
+        const coords = de.getCanvasCoords(e);
+        const constrained = de.isWithinPageBounds(coords.x, coords.y) ? coords : de.constrainToPageBounds(coords.x, coords.y);
+        this._deletionPath.push({ x: constrained.x, y: constrained.y });
+
+        // Draw preview
+        const ctx = de.previewCtx;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(220,20,60,0.9)';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        const s0 = de.worldToScreen(this._deletionPath[0]);
+        ctx.moveTo(s0.x, s0.y);
+        for (let i = 1; i < this._deletionPath.length; i++) {
+            const s = de.worldToScreen(this._deletionPath[i]);
+            ctx.lineTo(s.x, s.y);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    finishStrokeDeletion(e) {
+        const de = this.drawingEngine;
+        this._isDeletingStrokes = false;
+
+        // Compute touched strokes and remove them
+        const toRemove = de.strokeIdsTouchingPath(this._deletionPath, Math.max(6, this.toolbarManager.getBrushSize()));
+        if (toRemove.length > 0) {
+            const removed = de.removeObjectsById(toRemove);
+            if (removed) {
+                this.historyManager.pushHistory(de.getState());
+            }
+        }
+
+        // Clear preview
+        de.previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+        de.previewCtx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
+        this._deletionPath = null;
+        de.redrawAll();
     }
 
     /* ==========================================================================

@@ -755,6 +755,66 @@ class DrawingEngine {
         return true;
     }
 
+    // Delete one or more stroke objects by id
+    removeObjectsById(ids) {
+        const idSet = new Set(ids);
+        const beforeLen = this.drawnObjects.length;
+        this.drawnObjects = this.drawnObjects.filter(o => !idSet.has(o.id));
+        const removed = beforeLen !== this.drawnObjects.length;
+        // Also clear from selection and auto-formula tracking
+        ids.forEach(id => {
+            this.selectedIds.delete(id);
+            this.autoFormulaStrokeIds.delete(id);
+        });
+        return removed;
+    }
+
+    // Return list of stroke object ids that intersect a given world-space point
+    strokeIdsTouchingPoint(x, y, tolerance = 6) {
+        const hits = [];
+        this.drawnObjects.forEach(o => {
+            if (!['path', 'line', 'rect', 'circle'].includes(o.type)) return;
+            if (GeometryUtils.objectHitTest(o, { x, y }, tolerance)) {
+                hits.push(o.id);
+            }
+        });
+        return hits;
+    }
+
+    // Given a path (array of points), return stroke ids that intersect any segment of the path
+    strokeIdsTouchingPath(pathPoints, tolerance = 6) {
+        const hits = new Set();
+        if (!Array.isArray(pathPoints) || pathPoints.length < 2) return [];
+
+        // For performance, compute bounding box of path and only test objects overlapping it
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        pathPoints.forEach(p => {
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+        });
+
+        this.drawnObjects.forEach(o => {
+            if (!['path', 'line', 'rect', 'circle'].includes(o.type)) return;
+            const b = GeometryUtils.getTransformedBounds(o);
+            if (b.maxX < minX - tolerance || b.minX > maxX + tolerance || b.maxY < minY - tolerance || b.minY > maxY + tolerance) {
+                return;
+            }
+
+            // Test each point on the path by hit-testing against object
+            for (let i = 0; i < pathPoints.length; i++) {
+                const p = pathPoints[i];
+                if (GeometryUtils.objectHitTest(o, { x: p.x, y: p.y }, tolerance)) {
+                    hits.add(o.id);
+                    break;
+                }
+            }
+        });
+
+        return Array.from(hits);
+    }
+
     selectAll() {
         this.selectedIds = new Set(this.drawnObjects.map(o => o.id));
     }

@@ -13,6 +13,7 @@ class ToolbarManager {
             circle: 'far fa-circle',
             rect: 'far fa-square',
             eraser: 'fas fa-eraser'
+            , 'stroke-deleter': 'fas fa-cut'
         };
 
         this.elements = {};
