@@ -80,6 +80,14 @@ class DrawingEngine {
         // Auto page add throttling
         this.lastAutoAddHeight = 0;
         this.lastAutoAddTime = 0;
+
+    // Scribble-as-deleter thresholds (configurable)
+    // Minimum/maximum pixel extents (width/height) of a stroke to be considered a scribble deleter
+    this.scribbleMinExtent = 10;
+    this.scribbleMaxExtent = 50;
+    // Coverage thresholds: if stroke bounding box is covered by stroke points between these values (0-1)
+    this.scribbleMinCoverage = 0.70;
+    this.scribbleMaxCoverage = 0.95;
     }
 
     /* ==========================================================================
@@ -813,6 +821,58 @@ class DrawingEngine {
         });
 
         return Array.from(hits);
+    }
+
+    // Estimate how much of the bounding box of a path object is covered by the path itself.
+    // We sample a grid of points inside the bounds and count how many are within the path stroke.
+    // Returns a fraction between 0 and 1.
+    estimatePathCoverage(pathObj, sampleResolution = 18) {
+        if (!pathObj || pathObj.type !== 'path' || !Array.isArray(pathObj.points) || pathObj.points.length < 2) return 0;
+
+    const b = GeometryUtils.objectBounds(pathObj);
+        const width = b.maxX - b.minX;
+        const height = b.maxY - b.minY;
+        if (width <= 0 || height <= 0) return 0;
+
+        // Adjust resolution based on bbox size to keep samples reasonable
+        const cols = Math.max(6, Math.min(sampleResolution, Math.round(width / 4)));
+        const rows = Math.max(6, Math.min(sampleResolution, Math.round(height / 4)));
+
+        let hits = 0;
+        let total = 0;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const sx = b.minX + (c + 0.5) * (width / cols);
+                const sy = b.minY + (r + 0.5) * (height / rows);
+                total++;
+                if (GeometryUtils.objectHitTest(pathObj, { x: sx, y: sy }, Math.max(2, pathObj.size / 2))) {
+                    hits++;
+                }
+            }
+        }
+
+        return total > 0 ? hits / total : 0;
+    }
+
+    // Heuristic to decide whether a path stroke should act as a scribble-deleter
+    isScribbleDeleterCandidate(pathObj) {
+        if (!pathObj || pathObj.type !== 'path' || !Array.isArray(pathObj.points) || pathObj.points.length < 2) return false;
+
+    const b = GeometryUtils.objectBounds(pathObj);
+        const width = b.maxX - b.minX;
+        const height = b.maxY - b.minY;
+
+        // Check extents
+        if (width < this.scribbleMinExtent || height < this.scribbleMinExtent) return false;
+        if (width > this.scribbleMaxExtent || height > this.scribbleMaxExtent) return false;
+
+        // Estimate coverage
+        const coverage = this.estimatePathCoverage(pathObj);
+        if (coverage >= this.scribbleMinCoverage && coverage <= this.scribbleMaxCoverage) {
+            return true;
+        }
+        return false;
     }
 
     selectAll() {

@@ -471,6 +471,41 @@ class NotesApp {
             de.previewCtx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
         }
 
+        // Special handling: if this was a pen stroke, check if it is a scribble-deleter candidate
+        if (de.currentPath && tool === 'pen' && !de.isErasing) {
+            const strokeObj = de.currentPath;
+
+            try {
+                if (de.isScribbleDeleterCandidate && de.isScribbleDeleterCandidate(strokeObj)) {
+                    // Find strokes touched by this scribble
+                    const touched = de.strokeIdsTouchingPath(strokeObj.points, Math.max(6, this.toolbarManager.getBrushSize()));
+                    // Remove the scribble itself from touched list if present
+                    const toRemove = touched.filter(id => id !== strokeObj.id);
+
+                    let removedAny = false;
+                    if (toRemove.length > 0) {
+                        removedAny = de.removeObjectsById(toRemove);
+                    }
+
+                    // Remove the scribble stroke itself (we don't want it to remain)
+                    de.removeObjectsById([strokeObj.id]);
+
+                    if (removedAny) {
+                        this.historyManager.pushHistory(de.getState());
+                    }
+
+                    // Clear preview and redraw
+                    de.previewCtx.setTransform(1, 0, 0, 1, 0, 0);
+                    de.previewCtx.clearRect(0, 0, de.previewCanvas.width, de.previewCanvas.height);
+                    de.redrawAll();
+                    // Done early
+                    return;
+                }
+            } catch (err) {
+                console.error('Scribble deleter check failed:', err);
+            }
+        }
+
         if (de.currentPath || (['line', 'circle', 'rect'].includes(tool))) {
             this.historyManager.pushHistory(de.getState());
         }
