@@ -567,6 +567,11 @@ class DrawingEngine {
 
     clearSelection() {
         this.selectedIds.clear();
+        
+        // Update toolbar selection state
+        if (window.app && window.app.toolbarManager) {
+            window.app.toolbarManager.updateSelectionState();
+        }
     }
 
     /* ==========================================================================

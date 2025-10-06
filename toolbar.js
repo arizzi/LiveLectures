@@ -38,8 +38,10 @@ class ToolbarManager {
         this.elements.fullscreenBtn = document.getElementById('fullscreenBtn');
         this.elements.undoBtn = document.getElementById('undoBtn');
         this.elements.redoBtn = document.getElementById('redoBtn');
+        this.elements.editPropertiesBtn = document.getElementById('editPropertiesBtn');
         this.elements.deleteBtn = document.getElementById('deleteBtn');
         this.elements.addPageBtn = document.getElementById('addPageBtn');
+        this.elements.exportPdfBtn = document.getElementById('exportPdfBtn');
         this.elements.exportJsonBtn = document.getElementById('exportJsonBtn');
         this.elements.importJsonBtn = document.getElementById('importJsonBtn');
         this.elements.importFileInput = document.getElementById('importFileInput');
@@ -144,6 +146,28 @@ class ToolbarManager {
         });
 
         // File operations
+        this.elements.exportPdfBtn.addEventListener('click', async () => {
+            try {
+                // Show loading state
+                this.elements.exportPdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                this.elements.exportPdfBtn.disabled = true;
+                
+                if (window.pdfExporter && window.app && window.app.drawingEngine) {
+                    await window.pdfExporter.exportToPDF(window.app.drawingEngine);
+                    console.log('PDF exported successfully');
+                } else {
+                    throw new Error('PDF export is not available. Drawing engine or PDF exporter not found.');
+                }
+            } catch (error) {
+                console.error('PDF export failed:', error);
+                alert('PDF export failed: ' + error.message);
+            } finally {
+                // Restore button state
+                this.elements.exportPdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i>';
+                this.elements.exportPdfBtn.disabled = false;
+            }
+        });
+
         this.elements.exportJsonBtn.addEventListener('click', () => {
             if (window.app && window.app.exportToJson) {
                 window.app.exportToJson();
@@ -167,6 +191,11 @@ class ToolbarManager {
             } finally {
                 this.elements.importFileInput.value = '';
             }
+        });
+
+        // Edit Properties
+        this.elements.editPropertiesBtn.addEventListener('click', () => {
+            this.openEditPropertiesModal();
         });
 
         // LaTeX conversion
@@ -404,6 +433,200 @@ class ToolbarManager {
         
         // Update button appearance using the same pattern as transcription
         this.updateAutoFormulaButton(isEnabled);
+    }
+
+    /* ==========================================================================
+       Selection and Edit Properties
+       ========================================================================== */
+    updateSelectionState() {
+        const drawingEngine = window.app?.drawingEngine;
+        if (!drawingEngine) return;
+
+        const hasSelection = drawingEngine.selectedIds.size > 0;
+        
+        // Show/hide edit properties button based on selection
+        if (hasSelection) {
+            this.elements.editPropertiesBtn.style.display = 'flex';
+        } else {
+            this.elements.editPropertiesBtn.style.display = 'none';
+        }
+    }
+
+    openEditPropertiesModal() {
+        const drawingEngine = window.app?.drawingEngine;
+        if (!drawingEngine || drawingEngine.selectedIds.size === 0) return;
+
+        // Get the first selected object (for now, we'll edit one at a time)
+        const selectedId = Array.from(drawingEngine.selectedIds)[0];
+        const selectedObject = drawingEngine.drawnObjects.find(obj => obj.id === selectedId);
+        
+        if (!selectedObject) return;
+
+        this.currentEditingObject = selectedObject;
+        this.showEditPropertiesModal(selectedObject);
+    }
+
+    showEditPropertiesModal(obj) {
+        const modal = document.getElementById('editPropertiesModal');
+        const propertyEditor = document.getElementById('propertyEditor');
+        
+        // Clear existing content
+        propertyEditor.innerHTML = '';
+        
+        // Generate property fields based on object type
+        this.generatePropertyFields(obj, propertyEditor);
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Setup modal event listeners
+        this.setupModalEventListeners();
+    }
+
+    generatePropertyFields(obj, container) {
+        // Common properties for all objects
+        this.addPropertyField(container, 'color', 'Color', obj.color || '#000000', 'color');
+        
+        if (obj.size !== undefined) {
+            this.addPropertyField(container, 'size', 'Size', obj.size, 'number', { min: 1, max: 50 });
+        }
+
+        // Type-specific properties
+        switch (obj.type) {
+            case 'text':
+                this.addPropertyField(container, 'text', 'Text', obj.text || '', 'text');
+                this.addPropertyField(container, 'fontSize', 'Font Size', obj.fontSize || 16, 'number', { min: 8, max: 72 });
+                this.addPropertyField(container, 'fontFamily', 'Font Family', obj.fontFamily || 'Arial', 'select', {
+                    options: ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'sans-serif', 'serif', 'monospace']
+                });
+                break;
+                
+            case 'latex':
+                this.addPropertyField(container, 'latex', 'LaTeX Source', obj.latex || '', 'textarea');
+                break;
+                
+            case 'line':
+            case 'rect':
+            case 'circle':
+                this.addPropertyField(container, 'startX', 'Start X', obj.startX || 0, 'number');
+                this.addPropertyField(container, 'startY', 'Start Y', obj.startY || 0, 'number');
+                this.addPropertyField(container, 'endX', 'End X', obj.endX || 0, 'number');
+                this.addPropertyField(container, 'endY', 'End Y', obj.endY || 0, 'number');
+                break;
+        }
+    }
+
+    addPropertyField(container, name, label, value, type = 'text', options = {}) {
+        const fieldDiv = document.createElement('div');
+        fieldDiv.className = 'property-field';
+        
+        const labelEl = document.createElement('label');
+        labelEl.textContent = label;
+        labelEl.setAttribute('for', `prop-${name}`);
+        fieldDiv.appendChild(labelEl);
+        
+        let inputEl;
+        
+        if (type === 'select') {
+            inputEl = document.createElement('select');
+            options.options.forEach(option => {
+                const optionEl = document.createElement('option');
+                optionEl.value = option;
+                optionEl.textContent = option;
+                if (option === value) optionEl.selected = true;
+                inputEl.appendChild(optionEl);
+            });
+        } else if (type === 'textarea') {
+            inputEl = document.createElement('textarea');
+            inputEl.value = value;
+        } else {
+            inputEl = document.createElement('input');
+            inputEl.type = type;
+            inputEl.value = value;
+            
+            if (options.min !== undefined) inputEl.min = options.min;
+            if (options.max !== undefined) inputEl.max = options.max;
+        }
+        
+        inputEl.id = `prop-${name}`;
+        inputEl.name = name;
+        fieldDiv.appendChild(inputEl);
+        
+        container.appendChild(fieldDiv);
+    }
+
+    setupModalEventListeners() {
+        const modal = document.getElementById('editPropertiesModal');
+        const saveBtn = document.getElementById('savePropertiesBtn');
+        const cancelBtn = document.getElementById('cancelPropertiesBtn');
+        const closeBtn = modal.querySelector('.modal-close');
+        
+        // Remove existing listeners
+        const newSaveBtn = saveBtn.cloneNode(true);
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        const newCloseBtn = closeBtn.cloneNode(true);
+        
+        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        
+        // Add new listeners
+        newSaveBtn.addEventListener('click', () => this.saveProperties());
+        newCancelBtn.addEventListener('click', () => this.closeEditPropertiesModal());
+        newCloseBtn.addEventListener('click', () => this.closeEditPropertiesModal());
+        
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeEditPropertiesModal();
+            }
+        });
+    }
+
+    saveProperties() {
+        const propertyEditor = document.getElementById('propertyEditor');
+        const inputs = propertyEditor.querySelectorAll('input, textarea, select');
+        
+        // Collect new values
+        const newProperties = {};
+        inputs.forEach(input => {
+            let value = input.value;
+            
+            // Type conversion based on input type
+            if (input.type === 'number') {
+                value = parseFloat(value);
+            } else if (input.type === 'color') {
+                // Ensure color format
+                value = value;
+            }
+            
+            newProperties[input.name] = value;
+        });
+        
+        // Apply changes to the object
+        Object.assign(this.currentEditingObject, newProperties);
+        
+        // Special handling for LaTeX objects
+        if (this.currentEditingObject.type === 'latex' && newProperties.latex) {
+            // Re-render LaTeX if the source changed
+            if (window.LatexRenderer && window.LatexRenderer.renderLatexObject) {
+                window.LatexRenderer.renderLatexObject(this.currentEditingObject);
+            }
+        }
+        
+        // Redraw canvas
+        if (window.app && window.app.drawingEngine) {
+            window.app.drawingEngine.redrawAll();
+        }
+        
+        // Close modal
+        this.closeEditPropertiesModal();
+    }
+
+    closeEditPropertiesModal() {
+        const modal = document.getElementById('editPropertiesModal');
+        modal.style.display = 'none';
+        this.currentEditingObject = null;
     }
 }
 

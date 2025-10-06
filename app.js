@@ -395,6 +395,11 @@ class NotesApp {
             de.selectedIds.clear();
             de.selectedIds.add(obj.id);
         }
+        
+        // Update toolbar selection state
+        if (this.toolbarManager) {
+            this.toolbarManager.updateSelectionState();
+        }
     }
 
     startMarqueeSelection(coords) {
@@ -463,6 +468,11 @@ class NotesApp {
                 de.selectedIds.add(o.id);
             }
         });
+        
+        // Update toolbar selection state
+        if (this.toolbarManager) {
+            this.toolbarManager.updateSelectionState();
+        }
     }
 
     updateObjectMove(coords) {

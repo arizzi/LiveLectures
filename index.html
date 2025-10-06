@@ -8,6 +8,7 @@
     
     <!-- External Dependencies -->
     <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- MathJax Configuration -->
@@ -91,6 +92,9 @@
                 <div class="toolbar-button" id="redoBtn" title="Redo (Ctrl+Shift+Z)">
                     <i class="fas fa-redo"></i>
                 </div>
+                <div class="toolbar-button" id="editPropertiesBtn" title="Edit Properties" style="display: none;">
+                    <i class="fas fa-edit"></i>
+                </div>
                 <div class="toolbar-button" id="deleteBtn" title="Delete Selected (Del)">
                     <i class="fas fa-trash"></i>
                 </div>
@@ -107,13 +111,17 @@
                     <i class="fas fa-folder"></i>
                     <span class="dropdown-arrow">▼</span>
                     <div class="submenu" id="fileSubmenu">
+                        <div class="submenu-item" id="exportPdfBtn">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>Export PDF</span>
+                        </div>
                         <div class="submenu-item" id="exportJsonBtn">
                             <i class="fas fa-download"></i>
-                            <span>Export</span>
+                            <span>Export JSON</span>
                         </div>
                         <div class="submenu-item" id="importJsonBtn">
                             <i class="fas fa-upload"></i>
-                            <span>Import</span>
+                            <span>Import JSON</span>
                         </div>
                     </div>
                 </div>
@@ -190,12 +198,32 @@
         </div>
     </div>
 
+    <!-- Edit Properties Modal -->
+    <div id="editPropertiesModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Properties</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="propertyEditor">
+                    <!-- Property fields will be dynamically generated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="savePropertiesBtn" class="btn btn-primary">Save</button>
+                <button id="cancelPropertiesBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Application Scripts -->
     <script src="utils.js"></script>
     <script src="drawing.js"></script>
     <script src="toolbar.js"></script>
     <script src="latex.js"></script>
     <script src="transcription.js"></script>
+    <script src="pdf-export.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
