@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+   <link rel="manifest" href="/manifest.json">
     <div class="app-container">
         <div class="toolbar">
             <!-- Tools Group -->
@@ -43,6 +44,8 @@
 
             <div class="toolbar-separator"></div>
 
+           <!-- Install button: shown when the browser emits beforeinstallprompt -->
+           <button id="install-btn" class="install-btn" hidden>Install as app</button>
             <!-- Drawing Tools Group -->
             <div class="toolbar-group">
                 <div class="toolbar-button active" id="drawingToolBtn" title="Drawing Tools">

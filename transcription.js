@@ -109,28 +109,62 @@ class TranscriptionManager {
             }
         }
 
-        // Handle final results
+        // Handle final results (deduplicate overlapping segments)
         if (final.trim()) {
             const currentTime = Date.now();
             const timeSinceLastSpeech = currentTime - this.lastSpeechTime;
-          //  console.log(`Time since last speech: ${timeSinceLastSpeech}ms vs threshold ${this.pauseThreshold}ms diff ${timeSinceLastSpeech - this.pauseThreshold}ms`);
-            
+
             // Add line break if there was a long pause
             if (timeSinceLastSpeech > this.pauseThreshold && this.elements.finished.innerHTML.trim()) {
                 console.log(`Pause detected: ${timeSinceLastSpeech}ms > ${this.pauseThreshold}ms - Adding line break`);
                 this.elements.finished.innerHTML += '<br>';
-                
+
                 // Add the previous text segment to the main document with timestamp
                 this.addTextToMainDocument();
             }
-            
-            // Add the final text to the finished container (escape HTML)
-            const escapedText = this.escapeHtml(final.trim());
-            this.elements.finished.innerHTML += escapedText + ' ';
-            
+
+            // Deduplicate by trimming any overlapping words between the end of the
+            // existing finished text and the start of the new final text. Word-based
+            // matching is more robust than character matching for speech segments.
+            const addition = final.trim().replace(/\s+/g, ' ');
+            const existing = (this.elements.finished.textContent || '').replace(/\s+/g, ' ').trim();
+
+            let toAppend = addition;
+            if (existing && addition) {
+                const existingWords = existing.split(' ');
+                const additionWords = addition.split(' ');
+
+                // Find the largest suffix of existing that matches a prefix of addition
+                let overlapWords = 0;
+                const maxCheck = Math.min(existingWords.length, additionWords.length);
+                for (let k = maxCheck; k > 0; k--) {
+                    const suffix = existingWords.slice(-k).join(' ');
+                    const prefix = additionWords.slice(0, k).join(' ');
+                    if (suffix === prefix) {
+                        overlapWords = k;
+                        break;
+                    }
+                }
+
+                if (overlapWords > 0) {
+                    toAppend = additionWords.slice(overlapWords).join(' ').trim();
+                }
+            }
+
+            if (toAppend) {
+                const escapedText = this.escapeHtml(toAppend);
+                // Ensure spacing is correct in HTML container
+                if (this.elements.finished.innerHTML && !/\s$/.test(this.elements.finished.textContent)) {
+                    this.elements.finished.innerHTML += ' ';
+                }
+                this.elements.finished.innerHTML += escapedText + ' ';
+            } else {
+                console.log('Skipped appending duplicate final segment');
+            }
+
             // Clear interim container since text is now final
             this.elements.interim.textContent = '';
-            
+
             this.lastSpeechTime = currentTime;
         }
 

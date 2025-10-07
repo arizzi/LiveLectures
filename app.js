@@ -33,8 +33,74 @@ class NotesApp {
         this.setupEventHandlers();
         this.setupSidebar();
         this.loadAutosave();
+    // Setup Progressive Web App helpers (service worker + install flow)
+    try { this.setupPWA(); } catch (e) { console.warn('PWA setup failed', e); }
         
         console.log('Notes App initialized successfully');
+    }
+
+    /* ==========================================================================
+       Progressive Web App (PWA) support: service worker registration and
+       handling the beforeinstallprompt flow so we can show an "Install as app"
+       button.
+       ========================================================================== */
+    setupPWA() {
+        // Register service worker if supported
+        if ('serviceWorker' in navigator) {
+            this.registerServiceWorker();
+        }
+
+        // Install button flow: capture `beforeinstallprompt` and show custom UI
+        this._deferredInstallPrompt = null;
+        this.installButton = document.getElementById('install-btn');
+
+        if (this.installButton) {
+            // Hide by default; will be shown when beforeinstallprompt fires
+            this.installButton.hidden = true;
+            this.installButton.addEventListener('click', async () => {
+                if (!this._deferredInstallPrompt) return;
+                this._deferredInstallPrompt.prompt();
+                const choice = await this._deferredInstallPrompt.userChoice;
+                // Optionally handle accepted/dismissed
+                if (choice && choice.outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                } else {
+                    console.log('User dismissed the install prompt');
+                }
+                // Clear the deferred prompt regardless of choice and hide button
+                this._deferredInstallPrompt = null;
+                this.installButton.hidden = true;
+            });
+        }
+
+        // Listen for the browser event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent Chrome 67+ from automatically showing the prompt
+            e.preventDefault();
+            this._deferredInstallPrompt = e;
+
+            // Show the install button unless app is already running standalone
+            const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+            if (this.installButton && !isStandalone) {
+                this.installButton.hidden = false;
+            }
+        });
+
+        // Hide install button when app was installed
+        window.addEventListener('appinstalled', () => {
+            console.log('App was installed.');
+            if (this.installButton) this.installButton.hidden = true;
+            this._deferredInstallPrompt = null;
+        });
+    }
+
+    async registerServiceWorker() {
+        try {
+            const reg = await navigator.serviceWorker.register('/sw.js');
+            console.log('Service worker registered with scope:', reg.scope);
+        } catch (err) {
+            console.warn('Service worker registration failed:', err);
+        }
     }
 
     initializeComponents() {
