@@ -84,6 +84,13 @@ class NotesApp {
             if (this.installButton && !isStandalone) {
                 this.installButton.hidden = false;
             }
+            // Create a visible floating banner as a fallback so users on mobile
+            // don't need to open the Settings submenu to find the install action.
+            try {
+                this._createInstallBanner();
+            } catch (bannerErr) {
+                console.debug('Failed to create install banner', bannerErr);
+            }
         });
 
         // Hide install button when app was installed
@@ -91,7 +98,151 @@ class NotesApp {
             console.log('App was installed.');
             if (this.installButton) this.installButton.hidden = true;
             this._deferredInstallPrompt = null;
+            // Remove any banner we created
+            const b = document.getElementById('pwa-install-banner');
+            if (b && b.parentNode) b.parentNode.removeChild(b);
         });
+    }
+
+    // Create a small floating install banner/button that appears when
+    // beforeinstallprompt is captured. This helps on mobile where the
+    // app's Settings submenu might be hidden or hard to reach.
+    _createInstallBanner() {
+        if (document.getElementById('pwa-install-banner')) return; // already present
+        const banner = document.createElement('div');
+        banner.id = 'pwa-install-banner';
+        banner.setAttribute('role', 'dialog');
+        banner.style.position = 'fixed';
+        banner.style.right = '12px';
+        banner.style.bottom = '12px';
+        banner.style.zIndex = 10000;
+        banner.style.background = 'rgba(0,123,255,0.95)';
+        banner.style.color = '#fff';
+        banner.style.padding = '10px 12px';
+        banner.style.borderRadius = '8px';
+        banner.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)';
+        banner.style.fontFamily = 'sans-serif';
+        banner.style.display = 'flex';
+        banner.style.alignItems = 'center';
+        banner.style.gap = '8px';
+
+        const txt = document.createElement('div');
+        txt.textContent = 'Install LiveLectures';
+        txt.style.fontSize = '14px';
+        txt.style.fontWeight = '600';
+        banner.appendChild(txt);
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Install';
+        btn.style.background = '#fff';
+        btn.style.color = '#007bff';
+        btn.style.border = 'none';
+        btn.style.padding = '6px 10px';
+        btn.style.borderRadius = '6px';
+        btn.style.cursor = 'pointer';
+        btn.addEventListener('click', async () => {
+            if (!this._deferredInstallPrompt) return;
+            try {
+                this._deferredInstallPrompt.prompt();
+                const choice = await this._deferredInstallPrompt.userChoice;
+                if (choice && choice.outcome === 'accepted') {
+                    console.log('User accepted the install prompt (banner)');
+                } else {
+                    console.log('User dismissed the install prompt (banner)');
+                }
+            } catch (err) {
+                console.warn('Install prompt failed:', err);
+            } finally {
+                this._deferredInstallPrompt = null;
+                // hide the banner
+                const b = document.getElementById('pwa-install-banner');
+                if (b && b.parentNode) b.parentNode.removeChild(b);
+            }
+        });
+        banner.appendChild(btn);
+
+        const close = document.createElement('button');
+        close.textContent = '✕';
+        close.title = 'Dismiss';
+        close.style.background = 'transparent';
+        close.style.color = 'rgba(255,255,255,0.9)';
+        close.style.border = 'none';
+        close.style.marginLeft = '6px';
+        close.style.cursor = 'pointer';
+        close.addEventListener('click', () => {
+            const b = document.getElementById('pwa-install-banner');
+            if (b && b.parentNode) b.parentNode.removeChild(b);
+        });
+        banner.appendChild(close);
+
+        document.body.appendChild(banner);
+    }
+
+    // Quick diagnostic: fetch the manifest and verify it contains at least
+    // one PNG icon reachable over the network. Chrome on Android prefers PNG
+    // icons (192/512) for installability. If a PNG icon isn't found or
+    // reachable, write a console warning and show a notice in the UI.
+    async _checkManifestIcons() {
+        try {
+            const resp = await fetch('/manifest.json', {cache: 'no-store'});
+            if (!resp.ok) {
+                console.warn('Could not fetch manifest.json (status ' + resp.status + ')');
+                return;
+            }
+            const mf = await resp.json();
+            const icons = Array.isArray(mf.icons) ? mf.icons : [];
+            // Look for png entries
+            const pngIcons = icons.filter(i => (i.type && i.type.includes('png')) || (i.src && i.src.toLowerCase().endsWith('.png')));
+            if (pngIcons.length === 0) {
+                console.warn('No PNG icons found in manifest.json. Android/Chrome typically requires PNG icons (192x192 and 512x512) for installability. See README or add PNG icons to /icons.');
+                // Show a small unobtrusive notice near the toolbar
+                this._showInstallHint('No PNG icons in manifest — add 192x192 and 512x512 PNGs in /icons for Android install.');
+                return;
+            }
+
+            // Try fetching the first PNG icon to ensure it's reachable
+            for (const icon of pngIcons) {
+                try {
+                    const url = icon.src.startsWith('/') ? icon.src : ('/' + icon.src);
+                    const r = await fetch(url, {method: 'HEAD'});
+                    if (r.ok) return; // good
+                } catch (err) {
+                    // continue trying others
+                }
+            }
+            console.warn('PNG icon entries exist in manifest.json but could not be fetched. Ensure the files exist and are reachable (HTTP 200).');
+            this._showInstallHint('Manifest PNG icons unreachable — ensure /icons/icon-192.png and /icons/icon-512.png are present.');
+        } catch (err) {
+            console.debug('Manifest icon check failed', err);
+        }
+    }
+
+    _showInstallHint(message) {
+        // Avoid creating multiple hints
+        if (document.getElementById('pwa-install-hint')) return;
+        const el = document.createElement('div');
+        el.id = 'pwa-install-hint';
+        el.style.position = 'fixed';
+        el.style.left = '12px';
+        el.style.bottom = '12px';
+        el.style.zIndex = 9999;
+        el.style.background = 'rgba(0,0,0,0.8)';
+        el.style.color = '#fff';
+        el.style.padding = '8px 10px';
+        el.style.borderRadius = '6px';
+        el.style.fontSize = '13px';
+        el.textContent = message;
+        const close = document.createElement('button');
+        close.textContent = 'OK';
+        close.style.marginLeft = '8px';
+        close.style.border = 'none';
+        close.style.background = '#fff';
+        close.style.color = '#000';
+        close.style.borderRadius = '4px';
+        close.style.padding = '2px 6px';
+        close.addEventListener('click', () => { if (el && el.parentNode) el.parentNode.removeChild(el); });
+        el.appendChild(close);
+        document.body.appendChild(el);
     }
 
     async registerServiceWorker() {

@@ -53,8 +53,8 @@ class ToolbarManager {
     applyControlsForTool(tool) {
         const defaults = {
             pen: { color: '#000000', size: 2 },
-            highlighter: { color: '#ff0000', size: 5 }, // red, 50% alpha handled in drawing
-            eraser: { color: '#ffffff', size: 7 },
+            highlighter: { color: '#ff0000', size: 10 }, // red, 50% alpha handled in drawing
+            eraser: { color: '#ffffff', size: 20 },
             shape: { color: '#003366', size: 2 }
         };
 
