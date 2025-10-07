@@ -261,6 +261,162 @@ class DrawingEngine {
         ctx.translate(-c.x, -c.y);
     }
 
+    // Return midpoint between two points
+    _midpoint(a, b) {
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+
+    // Draw a smoothed path using quadratic curve interpolation.
+    // For highlighter-like strokes we draw a single pass with a consistent width
+    // For pen strokes we draw per-segment stroked quadratic curves using
+    // a lineWidth derived from the pressures at segment endpoints so the
+    // stroke appears variable-width and smoother than straight segments.
+    _drawSmoothedPath(ctx, obj) {
+        const pts = obj.points;
+        if (!pts || pts.length < 2) return;
+
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Determine composite/alpha handling (preserve existing behavior)
+        let prevComposite = null;
+        let prevAlpha = null;
+        try {
+            prevComposite = ctx.globalCompositeOperation;
+            prevAlpha = ctx.globalAlpha;
+            ctx.globalCompositeOperation = obj.blend || 'source-over';
+            if (obj.tool === 'highlighter') {
+                ctx.globalAlpha = (typeof obj.alpha === 'number') ? obj.alpha : 0.45;
+            }
+        } catch (err) {
+            // ignore if not supported
+        }
+
+        // Highlighter: draw a single smooth path with a single width (max pressure)
+        if (obj.tool === 'highlighter') {
+            // compute max pressure fallback
+            let mp = 0;
+            for (let i = 0; i < pts.length; i++) {
+                const pp = pts[i] && typeof pts[i].pressure === 'number' ? pts[i].pressure : 0.5;
+                if (pp > mp) mp = pp;
+            }
+            const pressureToUse = (typeof obj.maxPressure === 'number' && obj.maxPressure > 0) ? obj.maxPressure : (mp > 0 ? mp : 0.5);
+            ctx.lineWidth = obj.size * pressureToUse;
+
+            ctx.beginPath();
+            // Start at first point
+            const p0 = pts[0];
+            ctx.moveTo(p0.x, p0.y);
+
+            // Use quadratic smoothing via midpoints
+            for (let i = 1; i < pts.length - 1; i++) {
+                const p = pts[i];
+                const next = pts[i + 1];
+                const mid = this._midpoint(p, next);
+                ctx.quadraticCurveTo(p.x, p.y, mid.x, mid.y);
+            }
+            // handle last segment
+            const penult = pts[pts.length - 2];
+            const last = pts[pts.length - 1];
+            ctx.quadraticCurveTo(penult.x, penult.y, last.x, last.y);
+            ctx.stroke();
+
+            if (prevComposite !== null) {
+                try {
+                    ctx.globalCompositeOperation = prevComposite;
+                    ctx.globalAlpha = prevAlpha;
+                } catch (err) {}
+            }
+
+            return;
+        }
+
+        // Pen strokes: render as a filled variable-width ribbon using normals
+        // computed from neighboring points. This creates a true variable-width
+        // stroke (width follows pressure) without relying on lineWidth which
+        // cannot vary along a single stroked path.
+        const nPts = pts.length;
+        const left = new Array(nPts);
+        const right = new Array(nPts);
+
+        for (let i = 0; i < nPts; i++) {
+            const cur = pts[i];
+            const prev = pts[Math.max(0, i - 1)];
+            const next = pts[Math.min(nPts - 1, i + 1)];
+
+            // tangent from prev -> next to get a stable normal
+            let vx = next.x - prev.x;
+            let vy = next.y - prev.y;
+            const vlen = Math.hypot(vx, vy) || 1;
+            vx /= vlen; vy /= vlen;
+
+            // normal
+            const nx = -vy;
+            const ny = vx;
+
+            const pressure = (typeof cur.pressure === 'number') ? cur.pressure : 0.5;
+            const halfW = (obj.size * pressure) / 2;
+
+            left[i] = { x: cur.x + nx * halfW, y: cur.y + ny * halfW };
+            right[i] = { x: cur.x - nx * halfW, y: cur.y - ny * halfW };
+        }
+
+        // Build filled path: left side forward (smoothed with quadratic midpoints)
+        ctx.beginPath();
+        ctx.moveTo(left[0].x, left[0].y);
+        for (let i = 1; i < nPts; i++) {
+            const prev = left[i - 1];
+            const cur = left[i];
+            const mid = this._midpoint(prev, cur);
+            ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
+        }
+        // line to last left point to ensure path reaches tip
+        ctx.lineTo(left[nPts - 1].x, left[nPts - 1].y);
+
+        // Right side back in reverse order
+        for (let i = nPts - 1; i > 0; i--) {
+            const cur = right[i];
+            const prev = right[i - 1];
+            const mid = this._midpoint(cur, prev);
+            ctx.quadraticCurveTo(cur.x, cur.y, mid.x, mid.y);
+        }
+
+        ctx.closePath();
+
+        // Fill and optionally stroke outline for crispness
+        ctx.fillStyle = obj.color;
+        try {
+            ctx.fill();
+            // Thin outline for better crisp edges
+            ctx.lineWidth = Math.max(1, obj.size * 0.08);
+            ctx.strokeStyle = obj.color;
+            ctx.stroke();
+        } catch (err) {
+            // fallback: simple stroked path if fill fails
+            console.warn('Variable-width fill failed, fallback to stroked path', err);
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) {
+                const p = pts[i];
+                const next = pts[i + 1];
+                const mid = this._midpoint(p, next);
+                ctx.quadraticCurveTo(p.x, p.y, mid.x, mid.y);
+            }
+            const penult = pts[pts.length - 2];
+            const last = pts[pts.length - 1];
+            ctx.quadraticCurveTo(penult.x, penult.y, last.x, last.y);
+            ctx.lineWidth = Math.max(0.5, obj.size * 0.5);
+            ctx.stroke();
+        }
+
+        if (prevComposite !== null) {
+            try {
+                ctx.globalCompositeOperation = prevComposite;
+                ctx.globalAlpha = prevAlpha;
+            } catch (err) {}
+        }
+    }
+
     drawObject(ctx, obj) {
         GeometryUtils.ensureTransform(obj);
         
@@ -353,67 +509,12 @@ class DrawingEngine {
 
         if (obj.type === 'path') {
             if (obj.points.length > 1) {
-                // If this is a highlighter stroke, draw the whole path once with
-                // composite/alpha applied a single time to avoid repeated darkening
-                if (obj.tool === 'highlighter' || obj.blend === 'multiply' || obj.blend === 'source-over') {
-                    let prevComposite = null;
-                    let prevAlpha = null;
-                    try {
-                        prevComposite = ctx.globalCompositeOperation;
-                        prevAlpha = ctx.globalAlpha;
-                        ctx.globalCompositeOperation = obj.blend || 'source-over';
-                        ctx.globalAlpha = (typeof obj.alpha === 'number') ? obj.alpha : 0.45;
-                    } catch (err) {
-                        // ignore if not supported
-                    }
-
-                        ctx.beginPath();
-                        // Start from first point
-                        const p0 = obj.points[0];
-                        ctx.moveTo(p0.x, p0.y);
-
-                        // Determine pressure to use for the whole stroke when rendering
-                        // For highlighter strokes we prefer a consistent width using the
-                        // maximum pressure detected during the stroke (obj.maxPressure).
-                        // Older/stored objects may not have maxPressure; fall back to
-                        // the maximum pressure among points or a sensible default.
-                        let pressureToUse = null;
-                        if (obj.tool === 'highlighter' && typeof obj.maxPressure === 'number' && obj.maxPressure > 0) {
-                            pressureToUse = obj.maxPressure;
-                        } else {
-                            // compute max pressure among points as fallback
-                            let mp = 0;
-                            for (let i = 0; i < obj.points.length; i++) {
-                                const pp = obj.points[i] && typeof obj.points[i].pressure === 'number' ? obj.points[i].pressure : 0.5;
-                                if (pp > mp) mp = pp;
-                            }
-                            pressureToUse = mp > 0 ? mp : 0.5;
-                        }
-
-                        // Set a single lineWidth for the whole stroke before stroking.
-                        // (Setting lineWidth between path segments doesn't change
-                        // already-recorded geometry; the width used at stroke() is
-                        // what's applied — previously that caused the stroke to use
-                        // the last point's pressure.)
-                        ctx.lineWidth = obj.size * pressureToUse;
-
-                        for (let i = 1; i < obj.points.length; i++) {
-                            const p = obj.points[i];
-                            ctx.lineTo(p.x, p.y);
-                        }
-                        ctx.stroke();
-
-                    // restore composite/alpha
-                    if (prevComposite !== null) {
-                        try {
-                            ctx.globalCompositeOperation = prevComposite;
-                            ctx.globalAlpha = prevAlpha;
-                        } catch (err) {
-                            // ignore
-                        }
-                    }
-                } else {
-                    // Fallback: draw per segment (legacy behavior)
+                // Use improved smoothed rendering for freehand paths
+                try {
+                    this._drawSmoothedPath(ctx, obj);
+                } catch (err) {
+                    // If anything goes wrong, fall back to legacy per-segment rendering
+                    console.warn('Smoothed path rendering failed, using legacy fallback', err);
                     for (let i = 1; i < obj.points.length; i++) {
                         const p1 = obj.points[i - 1];
                         const p2 = obj.points[i];
