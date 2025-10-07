@@ -58,25 +58,38 @@ class NotesApp {
             // Hide by default; will be shown when beforeinstallprompt fires
             this.installButton.hidden = true;
             this.installButton.addEventListener('click', async () => {
-                if (!this._deferredInstallPrompt) return;
-                this._deferredInstallPrompt.prompt();
-                const choice = await this._deferredInstallPrompt.userChoice;
-                // Optionally handle accepted/dismissed
-                if (choice && choice.outcome === 'accepted') {
-                    console.log('User accepted the install prompt');
-                } else {
-                    console.log('User dismissed the install prompt');
+                // If the beforeinstallprompt event hasn't been captured yet, give feedback
+                if (!this._deferredInstallPrompt) {
+                    console.warn('Install button clicked but beforeinstallprompt is not available yet.');
+                    this._showInstallHint('Install prompt not available yet — try interacting with the site or open this on Chrome (not in incognito)');
+                    return;
                 }
-                // Clear the deferred prompt regardless of choice and hide button
-                this._deferredInstallPrompt = null;
-                this.installButton.hidden = true;
-            });
+
+                    try {
+                        this._deferredInstallPrompt.prompt();
+                        const choice = await this._deferredInstallPrompt.userChoice;
+                        // Optionally handle accepted/dismissed
+                        if (choice && choice.outcome === 'accepted') {
+                            console.log('User accepted the install prompt');
+                        } else {
+                            console.log('User dismissed the install prompt');
+                        }
+                    } catch (err) {
+                        console.warn('Install prompt failed:', err);
+                        this._showInstallHint('Install failed: ' + (err && err.message ? err.message : 'unknown'));
+                    } finally {
+                        // Clear the deferred prompt regardless of choice and hide button
+                        this._deferredInstallPrompt = null;
+                        this.installButton.hidden = true;
+                    }
+                });
         }
 
         // Listen for the browser event
         window.addEventListener('beforeinstallprompt', (e) => {
             // Prevent Chrome 67+ from automatically showing the prompt
             e.preventDefault();
+            console.log('beforeinstallprompt event captured', e);
             this._deferredInstallPrompt = e;
 
             // Show the install button unless app is already running standalone
@@ -102,7 +115,11 @@ class NotesApp {
             const b = document.getElementById('pwa-install-banner');
             if (b && b.parentNode) b.parentNode.removeChild(b);
         });
+        // Run a quick manifest/icon diagnostic to help surface common Android
+        // installability issues (missing PNG icons, unreachable assets).
+        try { this._checkManifestIcons(); } catch (diagErr) { console.debug('Manifest check failed', diagErr); }
     }
+
 
     // Create a small floating install banner/button that appears when
     // beforeinstallprompt is captured. This helps on mobile where the
