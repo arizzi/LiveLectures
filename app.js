@@ -392,6 +392,9 @@ class NotesApp {
             const obj = {
                 type: 'path',
                 points: [{ ...coords, pressure }],
+                // Track maximum pressure seen during the stroke so tools like
+                // the highlighter can render using a consistent width.
+                maxPressure: pressure,
                 color,
                 size
             };
@@ -477,7 +480,12 @@ class NotesApp {
 
     if ((tool === 'pen' || tool === 'eraser' || tool === 'highlighter' || de.isErasing) && de.currentPath) {
             const pressure = (de.isErasing || tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
+            // push the point
             de.currentPath.points.push({ ...constrainedCoords, pressure });
+            // update maxPressure on the object so rendering can use it
+            if (typeof de.currentPath.maxPressure !== 'number' || pressure > de.currentPath.maxPressure) {
+                de.currentPath.maxPressure = pressure;
+            }
 
             // Reset last-hit timer so the idle window is relative to the most recent input
             try {

@@ -367,16 +367,41 @@ class DrawingEngine {
                         // ignore if not supported
                     }
 
-                    ctx.beginPath();
-                    // Start from first point
-                    const p0 = obj.points[0];
-                    ctx.moveTo(p0.x, p0.y);
-                    for (let i = 1; i < obj.points.length; i++) {
-                        const p = obj.points[i];
-                        ctx.lineWidth = obj.size * (p.pressure > 0 ? p.pressure : 0.5);
-                        ctx.lineTo(p.x, p.y);
-                    }
-                    ctx.stroke();
+                        ctx.beginPath();
+                        // Start from first point
+                        const p0 = obj.points[0];
+                        ctx.moveTo(p0.x, p0.y);
+
+                        // Determine pressure to use for the whole stroke when rendering
+                        // For highlighter strokes we prefer a consistent width using the
+                        // maximum pressure detected during the stroke (obj.maxPressure).
+                        // Older/stored objects may not have maxPressure; fall back to
+                        // the maximum pressure among points or a sensible default.
+                        let pressureToUse = null;
+                        if (obj.tool === 'highlighter' && typeof obj.maxPressure === 'number' && obj.maxPressure > 0) {
+                            pressureToUse = obj.maxPressure;
+                        } else {
+                            // compute max pressure among points as fallback
+                            let mp = 0;
+                            for (let i = 0; i < obj.points.length; i++) {
+                                const pp = obj.points[i] && typeof obj.points[i].pressure === 'number' ? obj.points[i].pressure : 0.5;
+                                if (pp > mp) mp = pp;
+                            }
+                            pressureToUse = mp > 0 ? mp : 0.5;
+                        }
+
+                        // Set a single lineWidth for the whole stroke before stroking.
+                        // (Setting lineWidth between path segments doesn't change
+                        // already-recorded geometry; the width used at stroke() is
+                        // what's applied — previously that caused the stroke to use
+                        // the last point's pressure.)
+                        ctx.lineWidth = obj.size * pressureToUse;
+
+                        for (let i = 1; i < obj.points.length; i++) {
+                            const p = obj.points[i];
+                            ctx.lineTo(p.x, p.y);
+                        }
+                        ctx.stroke();
 
                     // restore composite/alpha
                     if (prevComposite !== null) {
