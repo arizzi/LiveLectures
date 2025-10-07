@@ -128,7 +128,7 @@ class NotesApp {
         // Default to fit width + center after initialization
         setTimeout(() => {
             try {
-                this.drawingEngine.fitWidthCenter();
+                this.drawingEngine.fitWidthCenterHorizontal();
             } catch (e) {
                 console.warn('fitWidthCenter failed at init:', e);
             }
@@ -143,7 +143,7 @@ class NotesApp {
                 this.drawingEngine.resizeCanvases();
                 // Re-apply fit+center after canvas resize
                 try {
-                    this.drawingEngine.fitWidthCenter();
+                    this.drawingEngine.fitWidthCenterHorizontal();
                 } catch (e) {
                     console.warn('fitWidthCenter failed on resize:', e);
                 }
@@ -155,7 +155,7 @@ class NotesApp {
             setTimeout(() => {
                 this.drawingEngine.resizeCanvases();
                 try {
-                    this.drawingEngine.fitWidthCenter();
+                    this.drawingEngine.fitWidthCenterHorizontal();
                 } catch (e) {
                     console.warn('fitWidthCenter failed on orientationchange:', e);
                 }
@@ -169,7 +169,7 @@ class NotesApp {
                 resizeTimeout = setTimeout(() => {
                     this.drawingEngine.resizeCanvases();
                     try {
-                        this.drawingEngine.fitWidthCenter();
+                        this.drawingEngine.fitWidthCenterHorizontal();
                     } catch (e) {
                         console.warn('fitWidthCenter failed on visualViewport resize:', e);
                     }
