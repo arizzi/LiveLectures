@@ -182,23 +182,29 @@ class ToolbarManager {
             });
         }
 
-        // 'More...' button opens the native color picker for RGB selection
+        // 'More...' button: prefer JS picker (Pickr) if available, otherwise open native color input
         const moreBtn = document.getElementById('moreColorsBtn');
-        if (moreBtn && this.elements.colorPicker) {
+        if (moreBtn) {
             moreBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // Ensure the native input is visible to the browser before clicking it.
-                // Some browsers won't open the color dialog if the input is hidden.
-                if (this.elements.colorPalette) this.elements.colorPalette.style.display = 'flex';
-                // Programmatically click the native color input to open the OS color picker
-                // This happens as part of the user gesture (the More button click)
-                try {
-                    this.elements.colorPicker.click();
-                } catch (err) {
-                    // Fallback: focus then click
-                    try { this.elements.colorPicker.focus(); this.elements.colorPicker.click(); } catch (e) { }
+                // If Pickr is available, show it; otherwise open native input
+                if (window.Pickr) {
+                    try {
+                        // If we have created pickr instance, toggle the widget
+                        if (this._pickr) {
+                            this._pickr.show();
+                        }
+                    } catch (err) {
+                        // fallback to native color input
+                        if (this.elements.colorPicker) {
+                            try { this.elements.colorPicker.click(); } catch (e) { try { this.elements.colorPicker.focus(); this.elements.colorPicker.click(); } catch (e2) {} }
+                        }
+                    }
+                } else if (this.elements.colorPicker) {
+                    // Ensure the native input is visible to the browser before clicking it (some browsers restrict hidden inputs)
+                    if (this.elements.colorPalette) this.elements.colorPalette.style.display = 'flex';
+                    try { this.elements.colorPicker.click(); } catch (err) { try { this.elements.colorPicker.focus(); this.elements.colorPicker.click(); } catch (e) {} }
                 }
-                // Do NOT immediately hide the palette here; wait for the 'change' event
             });
         }
 
@@ -212,7 +218,66 @@ class ToolbarManager {
         // Initialize from saved settings for current tool
         setTimeout(() => {
             this.applyControlsForTool(this.currentTool || 'pen');
+            // Initialize Pickr if available
+            try { this._initializePickr(); } catch (err) { /* ignore */ }
         }, 50);
+    }
+
+    _initializePickr() {
+        if (!window.Pickr) return;
+        const container = document.getElementById('pickrContainer');
+        if (!container) return;
+
+        // If already initialized, update default color
+        if (this._pickr) {
+            this._pickr.setColor(this.elements.colorPicker.value);
+            return;
+        }
+
+        // Create Pickr instance
+        this._pickr = Pickr.create({
+            el: container,
+            theme: 'classic', // or 'monolith', 'nano'
+            default: this.elements.colorPicker.value || '#000000',
+            components: {
+                // Main components
+                preview: true,
+                opacity: true,
+                hue: true,
+
+                // Input / output Options
+                interaction: {
+                    hex: true,
+                    rgba: true,
+                    input: true,
+                    clear: false,
+                    save: true
+                }
+            }
+        });
+
+        // When color changes (live preview)
+        this._pickr.on('change', (color) => {
+            try {
+                const c = color.toHEXA().toString();
+                if (this.elements.colorPreview) this.elements.colorPreview.style.background = c;
+            } catch (e) {}
+        });
+
+        // When user saves/chooses a color
+        this._pickr.on('save', (color) => {
+            try {
+                const c = color.toHEXA().toString();
+                if (this.elements.colorPicker) this.elements.colorPicker.value = c;
+                if (this.elements.colorPreview) this.elements.colorPreview.style.background = c;
+                this.onColorOrSizeChanged();
+            } catch (e) {}
+            // hide pickr after selection
+            try { this._pickr.hide(); } catch (e) {}
+        });
+
+        // Hide the underlying native color input; we still keep it for fallback storage
+        if (this.elements.colorPicker) this.elements.colorPicker.style.display = 'none';
     }
 
     onColorOrSizeChanged() {
