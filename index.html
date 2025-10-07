@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Advanced Notes App</title>
     <!-- Notes App v2.1 (clean) -->
-    
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#007bff">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <!-- Apple touch icon -->
+    <link rel="apple-touch-icon" href="/icons/icon.svg">
     <!-- External Dependencies -->
     <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -47,8 +51,7 @@
 
             <div class="toolbar-separator"></div>
 
-           <!-- Install button: shown when the browser emits beforeinstallprompt -->
-           <button id="install-btn" class="install-btn" hidden>Install as app</button>
+           <!-- Install button removed from top-level toolbar; now lives in Settings submenu -->
             <!-- Drawing Tools Group -->
             <div class="toolbar-group">
                 <div class="toolbar-button active" id="drawingToolBtn" title="Drawing Tools">
@@ -228,10 +231,14 @@
                     <i class="fas fa-cog"></i>
                     <span class="dropdown-arrow">▼</span>
                     <div class="submenu" id="settingsSubmenu">
-                        <div class="submenu-item" id="setApiKeyBtn">
-                            <i class="fas fa-key"></i>
-                            <span>Set API Key</span>
-                        </div>
+                            <div class="submenu-item" id="setApiKeyBtn">
+                                <i class="fas fa-key"></i>
+                                <span>Set API Key</span>
+                            </div>
+                            <div class="submenu-item" id="install-btn" hidden>
+                                <i class="fas fa-download"></i>
+                                <span>Install as app</span>
+                            </div>
                         <div class="submenu-item">
                             <a href="https://aistudio.google.com/app/apikey" target="_blank">
                                 <i class="fas fa-external-link-alt"></i>

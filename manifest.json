@@ -1,0 +1,22 @@
+{
+  "name": "LiveLectures",
+  "short_name": "LiveLectures",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#007bff",
+  "description": "A lightweight notes and drawing app",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

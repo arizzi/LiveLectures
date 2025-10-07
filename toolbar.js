@@ -82,6 +82,7 @@ class ToolbarManager {
         this.elements.settingsBtn = document.getElementById('settingsBtn');
         this.elements.settingsSubmenu = document.getElementById('settingsSubmenu');
         this.elements.setApiKeyBtn = document.getElementById('setApiKeyBtn');
+    this.elements.installBtn = document.getElementById('install-btn');
 
         // Action buttons
         this.elements.fullscreenBtn = document.getElementById('fullscreenBtn');
