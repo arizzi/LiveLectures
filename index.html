@@ -87,7 +87,27 @@
             <!-- Color and Size -->
             <div class="color-size-group">
                 <label>Color:</label>
-                <input type="color" id="colorPicker" value="#000000" />
+                <div class="color-palette-wrapper">
+                    <button id="colorPaletteBtn" class="color-palette-btn" title="Choose color">
+                        <span id="colorPreview" class="color-preview" style="background:#000"></span>
+                        <i class="fas fa-caret-down" style="margin-left:6px; font-size:10px;"></i>
+                    </button>
+                    <div id="colorPalette" class="color-palette" style="display:none;">
+                        <!-- Predefined colors -->
+                        <button class="color-swatch" data-color="#000000" style="background:#000000"></button>
+                        <button class="color-swatch" data-color="#1a73e8" style="background:#1a73e8"></button>
+                        <button class="color-swatch" data-color="#003366" style="background:#003366"></button>
+                        <button class="color-swatch" data-color="#4caf50" style="background:#4caf50"></button>
+                        <button class="color-swatch" data-color="#ff9800" style="background:#ff9800"></button>
+                        <button class="color-swatch" data-color="#ff0000" style="background:#ff0000"></button>
+                        <button class="color-swatch" data-color="#9c27b0" style="background:#9c27b0"></button>
+                        <button class="color-swatch" data-color="#795548" style="background:#795548"></button>
+                        <div class="color-palette-row">
+                            <input type="color" id="colorPicker" value="#000000" style="border:none; padding:0; width:36px; height:36px;" />
+                            <button id="moreColorsBtn" class="btn" style="margin-left:6px;">More...</button>
+                        </div>
+                    </div>
+                </div>
                 <label>Size:</label>
                 <input type="range" id="brushSize" min="1" max="50" value="5" />
                 <div class="toolbar-button" id="floodFillBtn" data-tool="flood-fill" title="Flood Fill" style="display:inline-block; vertical-align: middle; margin-left:8px;">

@@ -21,6 +21,52 @@ class ToolbarManager {
         this.elements = {};
         this.initializeElements();
         this.setupEventListeners();
+        // Ensure controls reflect saved settings for initial tool
+        try { this.applyControlsForTool(this.currentTool); } catch (err) { /* ignore */ }
+    }
+
+    /* ==========================================================================
+       Persistent per-tool settings (color / size)
+       Stored in localStorage under key 'll_last_settings'
+    ========================================================================== */
+    loadLastSettings() {
+        try {
+            const raw = localStorage.getItem('ll_last_settings');
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (err) {
+            console.debug('Failed to load last settings', err);
+            return null;
+        }
+    }
+
+    saveLastSettings(settings) {
+        try {
+            localStorage.setItem('ll_last_settings', JSON.stringify(settings));
+        } catch (err) {
+            console.debug('Failed to save last settings', err);
+        }
+    }
+
+    // Apply controls (color picker + brush size) for the given tool using
+    // saved settings or sensible defaults.
+    applyControlsForTool(tool) {
+        const defaults = {
+            pen: { color: '#000000', size: 2 },
+            highlighter: { color: '#ff0000', size: 5 }, // red, 50% alpha handled in drawing
+            eraser: { color: '#ffffff', size: 7 },
+            shape: { color: '#003366', size: 2 }
+        };
+
+        const stored = this.loadLastSettings() || {};
+        const entry = stored[tool] || stored[tool === 'line' || tool === 'circle' || tool === 'rect' ? 'shape' : tool] || defaults[tool] || defaults.pen;
+
+        // Set color and size controls
+        if (entry && entry.color) this.elements.colorPicker.value = entry.color;
+        if (entry && entry.size !== undefined) this.elements.brushSize.value = entry.size;
+
+        // Update preview swatch if present
+        if (this.elements.colorPreview) this.elements.colorPreview.style.background = this.elements.colorPicker.value;
     }
 
     /* ==========================================================================
@@ -63,8 +109,12 @@ class ToolbarManager {
     this.elements.zoomLabel = document.getElementById('zoomLabel');
 
         // Color and size controls
-        this.elements.colorPicker = document.getElementById('colorPicker');
-        this.elements.brushSize = document.getElementById('brushSize');
+    this.elements.colorPicker = document.getElementById('colorPicker');
+    this.elements.brushSize = document.getElementById('brushSize');
+    this.elements.colorPaletteBtn = document.getElementById('colorPaletteBtn');
+    this.elements.colorPalette = document.getElementById('colorPalette');
+    this.elements.colorPreview = document.getElementById('colorPreview');
+    // swatches are added in DOM; we will query them after DOM ready
 
         // AI and transcription
         this.elements.convertToLatexBtn = document.getElementById('convertToLatexBtn');
@@ -82,6 +132,99 @@ class ToolbarManager {
         this.setupActionButtons();
         this.setupKeyboardShortcuts();
         this.setupFullscreenHandling();
+        this.setupColorControls();
+    }
+
+    setupColorControls() {
+        // Toggle palette
+        if (this.elements.colorPaletteBtn && this.elements.colorPalette) {
+            this.elements.colorPaletteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isShown = this.elements.colorPalette.style.display === 'flex' || this.elements.colorPalette.classList.contains('show');
+                if (isShown) {
+                    this.elements.colorPalette.style.display = 'none';
+                } else {
+                    this.elements.colorPalette.style.display = 'flex';
+                }
+            });
+
+            // Close palette when clicking elsewhere
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.color-palette-wrapper')) {
+                    this.elements.colorPalette.style.display = 'none';
+                }
+            });
+        }
+
+        // Swatch clicks
+        const swatches = document.querySelectorAll('.color-swatch');
+        swatches.forEach(s => {
+            s.addEventListener('click', (ev) => {
+                const c = s.dataset.color;
+                if (c) {
+                    this.elements.colorPicker.value = c;
+                    if (this.elements.colorPreview) this.elements.colorPreview.style.background = c;
+                    this.onColorOrSizeChanged();
+                    this.elements.colorPalette.style.display = 'none';
+                }
+            });
+        });
+
+        // Native color input change: update preview on input, hide palette on change
+        if (this.elements.colorPicker) {
+            this.elements.colorPicker.addEventListener('input', () => {
+                if (this.elements.colorPreview) this.elements.colorPreview.style.background = this.elements.colorPicker.value;
+                this.onColorOrSizeChanged();
+            });
+            this.elements.colorPicker.addEventListener('change', () => {
+                // hide palette after a selection is confirmed
+                if (this.elements.colorPalette) this.elements.colorPalette.style.display = 'none';
+            });
+        }
+
+        // 'More...' button opens the native color picker for RGB selection
+        const moreBtn = document.getElementById('moreColorsBtn');
+        if (moreBtn && this.elements.colorPicker) {
+            moreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Ensure the native input is visible to the browser before clicking it.
+                // Some browsers won't open the color dialog if the input is hidden.
+                if (this.elements.colorPalette) this.elements.colorPalette.style.display = 'flex';
+                // Programmatically click the native color input to open the OS color picker
+                // This happens as part of the user gesture (the More button click)
+                try {
+                    this.elements.colorPicker.click();
+                } catch (err) {
+                    // Fallback: focus then click
+                    try { this.elements.colorPicker.focus(); this.elements.colorPicker.click(); } catch (e) { }
+                }
+                // Do NOT immediately hide the palette here; wait for the 'change' event
+            });
+        }
+
+        // Brush size change
+        if (this.elements.brushSize) {
+            this.elements.brushSize.addEventListener('input', () => {
+                this.onColorOrSizeChanged();
+            });
+        }
+
+        // Initialize from saved settings for current tool
+        setTimeout(() => {
+            this.applyControlsForTool(this.currentTool || 'pen');
+        }, 50);
+    }
+
+    onColorOrSizeChanged() {
+        // Persist current color/size for the current tool
+        const tool = this.currentTool || 'pen';
+        const color = this.elements.colorPicker.value;
+        const size = Number(this.elements.brushSize.value);
+
+        const saved = this.loadLastSettings() || {};
+        const key = (['line','circle','rect'].includes(tool)) ? 'shape' : tool;
+        saved[key] = { color, size };
+        this.saveLastSettings(saved);
     }
 
     setupSubmenuHandlers() {
@@ -541,6 +684,8 @@ class ToolbarManager {
         if (window.app && window.app.setCurrentTool) {
             window.app.setCurrentTool(tool);
         }
+        // Apply saved color/size for this tool
+        try { this.applyControlsForTool(tool); } catch (err) { console.debug('applyControlsForTool failed', err); }
     }
 
     /* ==========================================================================

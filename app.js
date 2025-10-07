@@ -441,7 +441,7 @@ class NotesApp {
             let color, size;
             if (tool === 'eraser') {
                 color = '#FFFFFF';
-                size = 30;
+                size = 7; // default eraser size
             } else if (tool === 'highlighter') {
                 // For highlighter we want a semi-transparent color with larger thickness
                 const base = this.toolbarManager.getColorValue() || '#ffff00';
@@ -449,8 +449,8 @@ class NotesApp {
                 color = base;
                 size = Math.max(8, Math.round(this.toolbarManager.getBrushSize() * 1.6));
             } else {
-                color = this.toolbarManager.getColorValue();
-                size = this.toolbarManager.getBrushSize();
+                color = this.toolbarManager.getColorValue() || '#000000';
+                size = this.toolbarManager.getBrushSize() || 2; // default pen size
             }
 
             const pressure = (tool === 'eraser') ? 1 : (e.pressure > 0 ? e.pressure : 0.5);
@@ -468,7 +468,7 @@ class NotesApp {
             if (tool === 'highlighter') {
                 // indicate highlighter-specific rendering: alpha and blend mode
                 obj.tool = 'highlighter';
-                obj.alpha = 0.45; // default alpha for highlighter strokes
+                obj.alpha = 0.5; // default alpha for highlighter strokes (50%)
                 // Use source-over to avoid multiplicative darkening on overlaps;
                 // drawing the whole stroke once minimizes visible accumulation.
                 obj.blend = 'source-over';
@@ -531,7 +531,7 @@ class NotesApp {
             type: 'path',
             points: [{ ...coords, pressure: 1 }],
             color: '#FFFFFF',
-            size: 30
+            size: 7
         });
     }
 

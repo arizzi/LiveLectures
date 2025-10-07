@@ -206,6 +206,14 @@ html, body {
     width: 80px;
 }
 
+/* Color palette UI */
+.color-palette-wrapper { position: relative; display: inline-block; }
+.color-palette-btn { display: inline-flex; align-items: center; gap:6px; padding:4px 6px; border:1px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; }
+.color-preview { width:24px; height:24px; border-radius:4px; border:1px solid #bbb; display:inline-block; }
+.color-palette { position: absolute; top: 44px; left: 0; background:#fff; border:1px solid #ddd; padding:8px; box-shadow:0 6px 14px rgba(0,0,0,0.12); border-radius:6px; display:flex; flex-wrap:wrap; gap:6px; z-index:1200; min-width:180px; }
+.color-swatch { width:32px; height:32px; border-radius:4px; border:1px solid rgba(0,0,0,0.12); cursor:pointer; }
+.color-palette-row { display:flex; align-items:center; gap:6px; margin-top:6px; width:100%; }
+
 /* ==========================================================================
    Zoom Controls
    ========================================================================== */
