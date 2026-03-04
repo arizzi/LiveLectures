@@ -8,9 +8,10 @@ window.NotesApp = {
     GEMINI_API_KEY: localStorage.getItem('gemini_api_key') || '',
     GEMINI_MODEL: (() => {
         const stored = localStorage.getItem('gemini_model') || '';
-        return /^[\w.\-]+$/.test(stored) ? stored : 'gemini-2.0-flash';
+        return /^[\w.\-]+$/.test(stored) ? stored : 'gemini-3.0-flash';
     })(),
     GEMINI_MODELS: [
+        'gemini-3.0-flash',
         'gemini-2.0-flash',
         'gemini-flash-lite-latest',
         'gemini-1.5-flash',
