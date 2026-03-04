@@ -43,7 +43,7 @@ class SvgConverter {
             console.log('Captured image size (base64 length):', base64Image ? base64Image.length : 0);
             this.elements.aiStatus.textContent = 'Converting to SVG...';
 
-            const prompt = `Convert the handwritten strokes in the provided image into a clean, minimal SVG representation of the strokes and shapes only. Return only the raw SVG markup (an <svg>...</svg> block). Do not include any explanations or additional text. Use stroke="black" and stroke-width values that approximate the original thickness. Preserve relative layout and scale so the SVG can be placed over the original bounding box.`;
+            const prompt = `Convert the drawing in a clean image for lecture notes, a minimal SVG representation of the shapes only, recognizable text should be text not strokes. Return only the raw SVG markup (an <svg>...</svg> block). Do not include any explanations or additional text. Use stroke="black" and stroke-width values that approximate the original thickness. Preserve relative layout and scale so the SVG can be placed over the original bounding box.`;
 
             const svgText = await ApiManager.callGeminiApi(base64Image, prompt);
             console.log('Received response from ApiManager (length):', svgText ? svgText.length : 0);
