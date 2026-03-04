@@ -82,6 +82,7 @@ class ToolbarManager {
         this.elements.settingsBtn = document.getElementById('settingsBtn');
         this.elements.settingsSubmenu = document.getElementById('settingsSubmenu');
         this.elements.setApiKeyBtn = document.getElementById('setApiKeyBtn');
+        this.elements.setModelBtn = document.getElementById('setModelBtn');
     this.elements.installBtn = document.getElementById('install-btn');
 
         // Action buttons
@@ -326,6 +327,13 @@ class ToolbarManager {
         if (this.elements.setApiKeyBtn) {
             this.elements.setApiKeyBtn.addEventListener('click', () => {
                 this.handleApiKeySetup();
+            });
+        }
+
+        // AI Model setting
+        if (this.elements.setModelBtn) {
+            this.elements.setModelBtn.addEventListener('click', () => {
+                this.handleModelSetup();
             });
         }
     }
@@ -761,6 +769,39 @@ class ToolbarManager {
         const newKey = prompt('Please paste your Gemini API Key:', window.NotesApp.GEMINI_API_KEY);
         if (ApiManager.updateApiKey(newKey)) {
             alert('API Key updated.');
+        }
+        this.hideAllSubmenus();
+    }
+
+    /* ==========================================================================
+       AI Model Management
+       ========================================================================== */
+    handleModelSetup() {
+        const models = window.NotesApp.GEMINI_MODELS;
+        const current = window.NotesApp.GEMINI_MODEL;
+        const listText = models.map((m, i) => `${i + 1}. ${m}${m === current ? ' (current)' : ''}`).join('\n');
+        const input = prompt(
+            `Select a Gemini model by entering its number, or type a custom model name.\n\n${listText}`,
+            current
+        );
+        if (input === null) {
+            this.hideAllSubmenus();
+            return;
+        }
+        const trimmed = input.trim();
+        if (!trimmed) {
+            alert('No model name entered. Model unchanged.');
+            this.hideAllSubmenus();
+            return;
+        }
+        const index = parseInt(trimmed, 10);
+        const chosen = (!isNaN(index) && index >= 1 && index <= models.length)
+            ? models[index - 1]
+            : trimmed;
+        if (ApiManager.updateModel(chosen)) {
+            alert(`AI model set to: ${window.NotesApp.GEMINI_MODEL}`);
+        } else {
+            alert(`Invalid model name: "${chosen}". Model names may only contain letters, numbers, hyphens, underscores, and dots.`);
         }
         this.hideAllSubmenus();
     }

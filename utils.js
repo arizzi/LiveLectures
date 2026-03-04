@@ -6,6 +6,17 @@
 window.NotesApp = {
     VERSION: '2.1',
     GEMINI_API_KEY: localStorage.getItem('gemini_api_key') || '',
+    GEMINI_MODEL: (() => {
+        const stored = localStorage.getItem('gemini_model') || '';
+        return /^[\w.\-]+$/.test(stored) ? stored : 'gemini-2.0-flash';
+    })(),
+    GEMINI_MODELS: [
+        'gemini-2.0-flash',
+        'gemini-flash-lite-latest',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-2.0-pro-exp',
+    ],
     MIN_ZOOM: 0.25,
     MAX_ZOOM: 3,
     ZOOM_STEP: 0.1,
@@ -340,13 +351,27 @@ class ApiManager {
         return false;
     }
 
+    static updateModel(newModel) {
+        if (newModel !== null) {
+            const trimmed = newModel.trim();
+            // Only allow safe model name characters (alphanumeric, hyphens, dots)
+            if (!/^[\w.\-]+$/.test(trimmed)) {
+                return false;
+            }
+            window.NotesApp.GEMINI_MODEL = trimmed;
+            localStorage.setItem('gemini_model', window.NotesApp.GEMINI_MODEL);
+            return true;
+        }
+        return false;
+    }
+
     static async callGeminiApi(base64Image, prompt) {
         if (!window.NotesApp.GEMINI_API_KEY) {
             throw new Error('Gemini API Key is missing. Please set it in the settings menu.');
         }
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${window.NotesApp.GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${window.NotesApp.GEMINI_MODEL}:generateContent?key=${window.NotesApp.GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
