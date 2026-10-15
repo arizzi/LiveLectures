@@ -53,18 +53,24 @@ class HistoryManager {
         return null;
     }
 
-    scheduleAutosave() {
+    scheduleAutosave(force = false) {
         if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
-        this.autosaveTimer = setTimeout(() => {
-            const snap = this.history.length ? 
-                this.history[this.history.length - 1] : 
+        const saveFunc = () => {
+            const snap = this.history.length ?
+                this.history[this.history.length - 1] :
                 JSON.stringify(this.getCurrentState());
             try {
                 localStorage.setItem('notes.autosave', snap);
             } catch (e) {
                 console.warn('Failed to autosave:', e);
             }
-        }, 500);
+        };
+
+        if (force) {
+            saveFunc();
+        } else {
+            this.autosaveTimer = setTimeout(saveFunc, 500);
+        }
     }
 
     loadAutosave() {
@@ -100,11 +106,11 @@ class GeometryUtils {
             // Approximate bounds for timestamp text
             const width = (obj.text ? obj.text.length : 10) * (obj.fontSize || 12) * 0.6;
             const height = obj.fontSize || 12;
-            return { 
-                minX: obj.x, 
-                minY: obj.y, 
-                maxX: obj.x + width, 
-                maxY: obj.y + height 
+            return {
+                minX: obj.x,
+                minY: obj.y,
+                maxX: obj.x + width,
+                maxY: obj.y + height
             };
         } else if (obj.type === 'speech') {
             // Approximate bounds for speech text (word-wrapped)
@@ -117,11 +123,11 @@ class GeometryUtils {
             const approxLines = Math.ceil(textLength / approxCharsPerLine);
             const width = Math.min(textLength * charWidth, maxWidth);
             const height = approxLines * lineHeight;
-            return { 
-                minX: obj.x, 
-                minY: obj.y, 
-                maxX: obj.x + width, 
-                maxY: obj.y + height 
+            return {
+                minX: obj.x,
+                minY: obj.y,
+                maxX: obj.x + width,
+                maxY: obj.y + height
             };
         } else if (obj.type === 'path') {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -177,15 +183,15 @@ class GeometryUtils {
         const transformed = corners.map(pt => {
             let x = pt.x - c.x;
             let y = pt.y - c.y;
-            
+
             x *= obj.transform.scaleX;
             y *= obj.transform.scaleY;
-            
+
             const cos = Math.cos(obj.transform.rotation);
             const sin = Math.sin(obj.transform.rotation);
             const xr = x * cos - y * sin;
             const yr = x * sin + y * cos;
-            
+
             return {
                 x: xr + c.x + obj.transform.tx,
                 y: yr + c.y + obj.transform.ty
@@ -211,9 +217,9 @@ class GeometryUtils {
         const dot = A * C + B * D;
         const len = C * C + D * D;
         let t = -1;
-        
+
         if (len) t = dot / len;
-        
+
         let xx, yy;
         if (t < 0) {
             xx = x1;
@@ -225,23 +231,23 @@ class GeometryUtils {
             xx = x1 + t * C;
             yy = y1 + t * D;
         }
-        
+
         return Math.hypot(px - xx, py - yy);
     }
 
     static objectHitTest(obj, point, tolerance = 6) {
         this.ensureTransform(obj);
         const c = this.objectCenter(obj);
-        
+
         let x = point.x - (c.x + obj.transform.tx);
         let y = point.y - (c.y + obj.transform.ty);
-        
+
         const r = -obj.transform.rotation;
         const cos = Math.cos(r);
         const sin = Math.sin(r);
         const xr = x * cos - y * sin;
         const yr = x * sin + y * cos;
-        
+
         const local = {
             x: xr / obj.transform.scaleX + c.x,
             y: yr / obj.transform.scaleY + c.y
@@ -251,7 +257,7 @@ class GeometryUtils {
             for (let i = 1; i < obj.points.length; i++) {
                 const p1 = obj.points[i - 1];
                 const p2 = obj.points[i];
-                if (this.pointToSegmentDistance(local.x, local.y, p1.x, p1.y, p2.x, p2.y) <= 
+                if (this.pointToSegmentDistance(local.x, local.y, p1.x, p1.y, p2.x, p2.y) <=
                     Math.max(tolerance, obj.size / 2)) {
                     return true;
                 }
@@ -259,14 +265,14 @@ class GeometryUtils {
             return false;
         } else if (obj.type === 'timestamp') {
             const bounds = this.objectBounds(obj);
-            return local.x >= bounds.minX && local.x <= bounds.maxX && 
-                   local.y >= bounds.minY && local.y <= bounds.maxY;
+            return local.x >= bounds.minX && local.x <= bounds.maxX &&
+                local.y >= bounds.minY && local.y <= bounds.maxY;
         } else if (obj.type === 'speech') {
             const bounds = this.objectBounds(obj);
-            return local.x >= bounds.minX && local.x <= bounds.maxX && 
-                   local.y >= bounds.minY && local.y <= bounds.maxY;
+            return local.x >= bounds.minX && local.x <= bounds.maxX &&
+                local.y >= bounds.minY && local.y <= bounds.maxY;
         } else if (obj.type === 'line') {
-            return this.pointToSegmentDistance(local.x, local.y, obj.startX, obj.startY, obj.endX, obj.endY) <= 
+            return this.pointToSegmentDistance(local.x, local.y, obj.startX, obj.startY, obj.endX, obj.endY) <=
                 Math.max(tolerance, obj.size / 2);
         } else if (obj.type === 'rect' || obj.type === 'latex') {
             const minX = Math.min(obj.startX, obj.endX) - tolerance;
@@ -279,7 +285,7 @@ class GeometryUtils {
             const d = Math.hypot(local.x - obj.startX, local.y - obj.startY);
             return Math.abs(d - r0) <= Math.max(tolerance, obj.size / 2);
         }
-        
+
         return false;
     }
 }
@@ -346,7 +352,7 @@ class ApiManager {
         }
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${window.NotesApp.GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${window.NotesApp.GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

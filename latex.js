@@ -6,7 +6,9 @@ class LatexRenderer {
     constructor() {
         this.lastConversionMeta = {};
         this.lastLatexResult = '';
-        
+        this.lastConversionTime = 0;
+        this.requestedTime = 0;
+
         this.elements = {
             aiStatus: document.getElementById('ai-status'),
             latexOutput: document.getElementById('latex-output'),
@@ -14,7 +16,7 @@ class LatexRenderer {
         };
 
         this.setupEventListeners();
-        
+
         // Clean up any legacy LaTeX objects when the renderer is initialized
         setTimeout(() => {
             this.cleanupLegacyLatexObjects();
@@ -46,19 +48,20 @@ class LatexRenderer {
         }
 
         try {
+            this.requestedTime = Date.now();
             const base64Image = this.captureCanvasImage();
             this.elements.aiStatus.textContent = 'Converting...';
 
             const prompt = "Transcribe the handwritten mathematical notes in this image into a single block of MathJax LaTeX. Do not include any explanations, just the raw MathJax code. Ensure it is properly formatted with block delimiters like $$...$$ or \\begin{align*}...\\end{align*} if appropriate.";
-            
+
             const latexText = await ApiManager.callGeminiApi(base64Image, prompt);
-            
+
             this.lastLatexResult = latexText;
             this.elements.latexOutput.textContent = latexText;
-            
+
             await MathJax.typesetPromise();
             this.elements.aiStatus.textContent = 'Conversion complete.';
-            
+
             if (latexText.trim()) {
                 this.elements.addLatexBtn.style.display = 'block';
             }
@@ -78,23 +81,47 @@ class LatexRenderer {
 
         // Check if we have temporary stroke selection from auto-formula (takes priority)
         const strokeSelection = this.tempStrokeSelection || null;
-        const hasSelection = strokeSelection || drawingEngine.selectedIds.size > 0;
-        
+        let hasSelection = strokeSelection || drawingEngine.selectedIds.size > 0;
+
+        // Fallback: If no manual selection, take all strokes since last conversion (max 1 min back)
+        if (!hasSelection) {
+            const now = Date.now();
+            const oneMinuteAgo = now - 60000;
+            const startTime = Math.max(this.lastConversionTime, oneMinuteAgo);
+
+            const recentStrokes = drawingEngine.drawnObjects.filter(o =>
+                o.timestamp && o.timestamp > startTime &&
+                ['path', 'line', 'circle', 'rect'].includes(o.type)
+            );
+
+            if (recentStrokes.length > 0) {
+                const recentIds = new Set(recentStrokes.map(o => o.id));
+                hasSelection = true;
+                this.tempSelectionIds = recentIds; // Store for use in this capture
+                console.log(`🕒 Using fallback selection: ${recentStrokes.length} recent strokes since ${new Date(startTime).toLocaleTimeString()}`);
+            }
+        }
+
         if (hasSelection) {
-            // Capture selected objects only
             let selected;
+            let currentSelectionIds;
+
             if (strokeSelection) {
-                // Use temporary auto-formula selection
                 selected = drawingEngine.drawnObjects.filter(o => strokeSelection.has(o.id));
+                currentSelectionIds = strokeSelection;
                 console.log(`🎯 Using auto-formula stroke selection: ${strokeSelection.size} strokes`);
+            } else if (this.tempSelectionIds) {
+                selected = drawingEngine.drawnObjects.filter(o => this.tempSelectionIds.has(o.id));
+                currentSelectionIds = this.tempSelectionIds;
+                delete this.tempSelectionIds;
             } else {
-                // Use regular user selection
                 selected = drawingEngine.drawnObjects.filter(o => drawingEngine.selectedIds.has(o.id));
+                currentSelectionIds = new Set(drawingEngine.selectedIds);
                 console.log(`🎯 Using user selection: ${drawingEngine.selectedIds.size} objects`);
             }
-            
+
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            
+
             selected.forEach(o => {
                 const b = GeometryUtils.getTransformedBounds(o);
                 if (b.minX < minX) minX = b.minX;
@@ -106,27 +133,27 @@ class LatexRenderer {
             const padding = 20;
             const w = maxX - minX + padding * 2;
             const h = maxY - minY + padding * 2;
-            
+
             temp.width = w;
             temp.height = h;
             tctx.fillStyle = '#fff';
             tctx.fillRect(0, 0, w, h);
             tctx.translate(-minX + padding, -minY + padding);
-            
+
             selected.forEach(o => drawingEngine.drawObject(tctx, o));
-            
+
             this.lastConversionMeta = {
-                selection: strokeSelection ? strokeSelection : new Set(drawingEngine.selectedIds),
+                selection: currentSelectionIds,
                 bounds: { minX, minY, maxX, maxY }
             };
         } else {
             // Capture current viewport
             temp.width = drawingEngine.previewCanvas.width;
             temp.height = drawingEngine.previewCanvas.height;
-            
+
             const srcW = drawingEngine.previewCanvas.width / drawingEngine.viewScale;
             const srcH = drawingEngine.previewCanvas.height / drawingEngine.viewScale;
-            
+
             tctx.drawImage(
                 drawingEngine.canvas,
                 drawingEngine.viewOffsetX,
@@ -148,11 +175,11 @@ class LatexRenderer {
        ========================================================================== */
     renderLatexObject(obj) {
         if (obj.isRendering) return;
-        
+
         const latexText = obj.latex.trim()
             .replace(/^\$\$|\$\$$/g, '')
             .replace(/^\\\[|\\\]$/g, '');
-            
+
         if (!latexText) return;
 
         // If already rendered and cached, no need to re-render
@@ -164,7 +191,7 @@ class LatexRenderer {
             try {
                 const node = MathJax.tex2svg(latexText, { display: true });
                 const svgNode = node.querySelector('svg');
-                
+
                 if (!svgNode) {
                     obj.isRendering = false;
                     return;
@@ -188,9 +215,9 @@ class LatexRenderer {
                 obj.renderedSvg = svgText;
                 obj.svgWidth = parseFloat(svgNode.getAttribute('width')) || svgNode.viewBox?.baseVal?.width || 100;
                 obj.svgHeight = parseFloat(svgNode.getAttribute('height')) || svgNode.viewBox?.baseVal?.height || 50;
-                
+
                 obj.isRendering = false;
-                
+
                 // Trigger redraw
                 if (window.app && window.app.drawingEngine) {
                     window.app.drawingEngine.redrawAll();
@@ -228,7 +255,7 @@ class LatexRenderer {
         const bounds = GeometryUtils.objectBounds(obj);
         const boundsWidth = bounds.maxX - bounds.minX;
         const boundsHeight = bounds.maxY - bounds.minY;
-        
+
         // Calculate scale to fit within bounds while maintaining aspect ratio
         const scaleX = boundsWidth / obj.svgWidth;
         const scaleY = boundsHeight / obj.svgHeight;
@@ -240,7 +267,7 @@ class LatexRenderer {
         // Center the scaled LaTeX within the original bounding box
         const offsetX = (boundsWidth - scaledWidth) / 2;
         const offsetY = (boundsHeight - scaledHeight) / 2;
-        
+
         const drawX = bounds.minX + offsetX;
         const drawY = bounds.minY + offsetY;
 
@@ -278,7 +305,7 @@ class LatexRenderer {
             ctx.font = '12px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Rendering...', bounds.minX + boundsWidth/2, bounds.minY + boundsHeight/2);
+            ctx.fillText('Rendering...', bounds.minX + boundsWidth / 2, bounds.minY + boundsHeight / 2);
             ctx.restore();
         }
     }
@@ -291,22 +318,9 @@ class LatexRenderer {
         if (!latexText.trim() || !this.lastConversionMeta.bounds) return;
 
         const drawingEngine = window.app.drawingEngine;
-
-        // Remove selected objects if they were converted
-        if (this.lastConversionMeta.selection && this.lastConversionMeta.selection.size > 0) {
-            drawingEngine.drawnObjects = drawingEngine.drawnObjects.filter(o => 
-                !this.lastConversionMeta.selection.has(o.id)
-            );
-            drawingEngine.selectedIds.clear();
-            
-            if (window.app.historyManager) {
-                window.app.historyManager.pushHistory(drawingEngine.getState());
-            }
-        }
-
         const bounds = this.lastConversionMeta.bounds;
+
         const newLatexObject = {
-            id: drawingEngine.idGenerator.generate(),
             type: 'latex',
             latex: latexText,
             startX: bounds.minX,
@@ -314,27 +328,31 @@ class LatexRenderer {
             endX: bounds.maxX,
             endY: bounds.maxY,
             transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
-            // Note: No dataUrl property - LaTeX will be rendered on-the-fly
         };
 
-        drawingEngine.drawnObjects.push(newLatexObject);
-        
-        if (window.app.historyManager) {
-            window.app.historyManager.pushHistory(drawingEngine.getState());
-        }
-        
-        drawingEngine.redrawAll();
+        const oldIds = this.lastConversionMeta.selection ? Array.from(this.lastConversionMeta.selection) : [];
+
+        // Use atomic replacement
+        drawingEngine.replaceObjects(oldIds, [newLatexObject]);
+
+        // Update timing and UI
+        this.lastConversionTime = this.requestedTime;
         this.elements.addLatexBtn.style.display = 'none';
+
+        // Force immediate save for critical state change
+        if (window.app.historyManager) {
+            window.app.historyManager.scheduleAutosave(true);
+        }
     }
 
     /* ==========================================================================
        Utility Functions
        ========================================================================== */
-    
+
     // Clean up legacy LaTeX objects that have dataUrl stored
     cleanupLegacyLatexObjects() {
         if (!window.app || !window.app.drawingEngine) return;
-        
+
         let hasChanges = false;
         window.app.drawingEngine.drawnObjects.forEach(obj => {
             if (obj.type === 'latex') {
@@ -374,7 +392,7 @@ class LatexRenderer {
                 obj.isRendering = false;
             }
         });
-        
+
         if (hasChanges) {
             window.app.drawingEngine.redrawAll();
             console.log('Cleaned up legacy LaTeX objects to use on-the-fly rendering');
@@ -387,7 +405,7 @@ class LatexRenderer {
     /* ==========================================================================
        Public API
        ========================================================================== */
-    
+
     // Get LaTeX source text from an object
     getLatexSource(obj) {
         if (obj.type === 'latex' && obj.latex) {
@@ -395,7 +413,7 @@ class LatexRenderer {
         }
         return null;
     }
-    
+
     // Update LaTeX source for an object
     updateLatexSource(obj, newLatex) {
         if (obj.type === 'latex') {
@@ -406,7 +424,7 @@ class LatexRenderer {
             delete obj.svgWidth;
             delete obj.svgHeight;
             obj.isRendering = false;
-            
+
             // Trigger re-render
             if (window.app && window.app.drawingEngine) {
                 window.app.drawingEngine.redrawAll();
@@ -415,7 +433,7 @@ class LatexRenderer {
         }
         return false;
     }
-    
+
     static getInstance() {
         if (!window.latexRenderer) {
             window.latexRenderer = new LatexRenderer();

@@ -11,27 +11,27 @@ class DrawingEngine {
         this.viewOffsetX = 0;
         this.viewOffsetY = 0;
         this.viewScale = 1;
-        
+
         // A4 portrait dimensions at DPI that assumes screen width=A4 width
         //get the A4 width from browser width
-        this.A4_WIDTH = window.innerWidth ;
+        this.A4_WIDTH = window.innerWidth;
         this.A4_HEIGHT = this.A4_WIDTH * 1.4142; // A4 height is sqrt(2) times width
         this.PAGE_HEIGHT = this.A4_HEIGHT;
-        
+
         // Page margins and spacing
         this.PAGE_MARGIN = 5; // Margin around each page
         this.PAGE_SPACING = 5; // Space between pages
         this.CANVAS_WIDTH = this.A4_WIDTH + (2 * this.PAGE_MARGIN);
-        
+
         // Background settings
         this.backgroundType = 'white'; // white, lines, squares, dots, image
         this.backgroundColor = '#f5f5f5'; // Grey background for margins
         this.patternColor = '#e8e8e8'; // Light grey for patterns
-        
+
         // Timestamp tracking for drawing events
         this.lastTimestampTime = 0;
         this.timestampInterval = 5000; // 5 seconds
-        
+
         // Auto formula recognition tracking
         this.autoFormulaEnabled = false;
         this.autoFormulaStartTime = null;
@@ -43,14 +43,14 @@ class DrawingEngine {
         this.lastScrollY = 0;
         this.scrollThreshold = 150; // pixels scrolled to trigger recognition (increased)
         this.autoFormulaStrokeIds = new Set(); // Track strokes separately from visible selection
-        
+
         // Canvas references (will be set by main app)
         this.canvas = null;
         this.ctx = null;
         this.previewCanvas = null;
         this.previewCtx = null;
         this.canvasContainer = null;
-        
+
         // Drawing state
         this.isDrawing = false;
         this.isPanning = false;
@@ -60,48 +60,48 @@ class DrawingEngine {
         this.currentTool = 'pen';
         this.panStartX = 0;
         this.panStartY = 0;
-        
+
         // Selection and transformation
         this.selectionDrag = null;
         this.marqueeRect = null;
-        
+
         // Touch/pinch handling
         this.pointers = new Map();
         this.isPinching = false;
         this.pinchStartDist = 0;
         this.pinchStartScale = 1;
         this.pinchCenter = { x: 0, y: 0 };
-    // Palm / pan detection
-    this.panCandidate = null; // { pointerId, startX, startY }
-    this.palmContactThreshold = 10; // px contact size considered a palm
-    this.panStartMovementThreshold = 16; // px movement before starting pan for touch
-    this.palmBlockedPointers = new Set(); // pointerIds considered palm contacts
-        
+        // Palm / pan detection
+        this.panCandidate = null; // { pointerId, startX, startY }
+        this.palmContactThreshold = 10; // px contact size considered a palm
+        this.panStartMovementThreshold = 16; // px movement before starting pan for touch
+        this.palmBlockedPointers = new Set(); // pointerIds considered palm contacts
+
         // Auto page add throttling
         this.lastAutoAddHeight = 0;
         this.lastAutoAddTime = 0;
 
-    // Pen idle detection: detect when pointer is down but hasn't moved beyond a small threshold
-    this.penIdleTimer = null;           // current timeout id
-    this.penIdleAnchorPoint = null;     // world coords where the idle timer was started/reset
-    this.penIdleThreshold = 3;          // pixels movement threshold to consider "moved"
-    this.penIdleTimeout = 1000;         // ms to wait before triggering idle
-    this.penIdleNotified = false;       // whether we've already alerted for current stroke
-    // Line-conversion state when a path is converted into line-edit mode
-    this._convertedToLine = false;
-    this._convertedLineEnd = null; // { x,y } optional current end point
+        // Pen idle detection: detect when pointer is down but hasn't moved beyond a small threshold
+        this.penIdleTimer = null;           // current timeout id
+        this.penIdleAnchorPoint = null;     // world coords where the idle timer was started/reset
+        this.penIdleThreshold = 3;          // pixels movement threshold to consider "moved"
+        this.penIdleTimeout = 1000;         // ms to wait before triggering idle
+        this.penIdleNotified = false;       // whether we've already alerted for current stroke
+        // Line-conversion state when a path is converted into line-edit mode
+        this._convertedToLine = false;
+        this._convertedLineEnd = null; // { x,y } optional current end point
 
-    // Scribble-as-deleter thresholds (configurable)
-    // Minimum/maximum pixel extents (width/height) of a stroke to be considered a scribble deleter
-    this.scribbleMinExtent = 10;
-    this.scribbleMaxExtent = 70;
-    // Coverage thresholds: if stroke bounding box is covered by stroke points between these values (0-1)
-    this.scribbleMinCoverage = 0.60;
-    this.scribbleMaxCoverage = 1;
+        // Scribble-as-deleter thresholds (configurable)
+        // Minimum/maximum pixel extents (width/height) of a stroke to be considered a scribble deleter
+        this.scribbleMinExtent = 10;
+        this.scribbleMaxExtent = 70;
+        // Coverage thresholds: if stroke bounding box is covered by stroke points between these values (0-1)
+        this.scribbleMinCoverage = 0.60;
+        this.scribbleMaxCoverage = 1;
 
-    // Flood-fill confirmation threshold (fraction of total canvas pixels).
-    // If a fill would change more than this fraction, ask the user to confirm.
-    this.floodFillConfirmFraction = 0.25; // 25% by default
+        // Flood-fill confirmation threshold (fraction of total canvas pixels).
+        // If a fill would change more than this fraction, ask the user to confirm.
+        this.floodFillConfirmFraction = 0.25; // 25% by default
     }
 
     // Try to detect if the current path is essentially a straight line.
@@ -181,11 +181,11 @@ class DrawingEngine {
         this.previewCanvas = previewCanvas;
         this.previewCtx = previewCanvas.getContext('2d');
         this.canvasContainer = canvasContainer;
-        
+
         // Set up A4 portrait canvas with 2 initial pages and margins
         this.canvas.width = this.CANVAS_WIDTH;
         this.canvas.height = (this.A4_HEIGHT + this.PAGE_SPACING) * 2 + this.PAGE_MARGIN;
-        
+
         // Ensure stacking order: drawing canvas below preview canvas
         try {
             this.canvas.style.zIndex = '0';
@@ -202,13 +202,13 @@ class DrawingEngine {
         this.canvasContainer.style.display = 'none';
         this.canvasContainer.offsetHeight; // Trigger reflow
         this.canvasContainer.style.display = '';
-        
+
         const { width, height } = this.canvasContainer.getBoundingClientRect();
-        
+
         // On mobile, ensure we're using the full available space
         const actualWidth = Math.max(width, this.canvasContainer.clientWidth);
         const actualHeight = Math.max(height, this.canvasContainer.clientHeight);
-        
+
         // Set canvas width to container width, but use A4 height for pages
         this.previewCanvas.width = actualWidth;
         this.previewCanvas.height = actualHeight;
@@ -220,13 +220,13 @@ class DrawingEngine {
         // Do not force CSS width/height on the main canvas here to avoid altering
         // its internal aspect ratio. The canvas internal size (this.canvas.width/height)
         // controls drawing resolution; if needed we adjust those explicitly elsewhere.
-        
+
         // Initialize main canvas with A4 dimensions including margins and start with 2 pages
         if (!this.canvas.width) {
             this.canvas.width = this.CANVAS_WIDTH;
             this.canvas.height = (this.A4_HEIGHT + this.PAGE_SPACING) * 2 + this.PAGE_MARGIN;
         }
-        
+
         this.redrawAll();
     }
 
@@ -253,7 +253,7 @@ class DrawingEngine {
     applyCtxObjectTransform(ctx, obj) {
         GeometryUtils.ensureTransform(obj);
         const c = GeometryUtils.objectCenter(obj);
-        
+
         ctx.save();
         ctx.translate(c.x + obj.transform.tx, c.y + obj.transform.ty);
         ctx.rotate(obj.transform.rotation);
@@ -325,7 +325,7 @@ class DrawingEngine {
                 try {
                     ctx.globalCompositeOperation = prevComposite;
                     ctx.globalAlpha = prevAlpha;
-                } catch (err) {}
+                } catch (err) { }
             }
 
             return;
@@ -413,18 +413,18 @@ class DrawingEngine {
             try {
                 ctx.globalCompositeOperation = prevComposite;
                 ctx.globalAlpha = prevAlpha;
-            } catch (err) {}
+            } catch (err) { }
         }
     }
 
     drawObject(ctx, obj) {
         GeometryUtils.ensureTransform(obj);
-        
+
         // Skip rendering timestamp and speech objects (but keep them in memory/JSON)
         if (obj.type === 'timestamp' || obj.type === 'speech') {
             return;
         }
-        
+
         this.applyCtxObjectTransform(ctx, obj);
 
         // Handle timestamp objects
@@ -446,19 +446,19 @@ class DrawingEngine {
             ctx.font = `${obj.fontSize || 14}px sans-serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
-            
+
             // Word wrap for long speech text
             const maxWidth = 400;
             const words = obj.text.split(' ');
             let line = '';
             let y = obj.y;
             const lineHeight = (obj.fontSize || 14) + 4;
-            
+
             for (let n = 0; n < words.length; n++) {
                 const testLine = line + words[n] + ' ';
                 const metrics = ctx.measureText(testLine);
                 const testWidth = metrics.width;
-                
+
                 if (testWidth > maxWidth && n > 0) {
                     ctx.fillText(line, obj.x, y);
                     line = words[n] + ' ';
@@ -483,7 +483,8 @@ class DrawingEngine {
 
         // Handle legacy image objects (for backward compatibility)
         if (obj.dataUrl) {
-            if (!obj.img) {
+            // Fix re-hydration: check if obj.img is a real Image instance and has a valid src
+            if (!(obj.img instanceof Image) || !obj.img.src) {
                 obj.img = new Image();
                 obj.img.src = obj.dataUrl;
                 obj.img.onload = () => this.redrawAll();
@@ -670,28 +671,28 @@ class DrawingEngine {
     drawPages() {
         const totalCanvasHeight = this.canvas.height / this.viewScale + this.viewOffsetY;
         const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
-        
+
         for (let i = 0; i < numPages; i++) {
             const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
             const pageX = this.PAGE_MARGIN;
-            
+
             // Draw page shadow
             this.ctx.save();
             this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
             this.ctx.fillRect(pageX + 3, pageY + 3, this.A4_WIDTH, this.A4_HEIGHT);
-            
+
             // Draw page background
             this.ctx.fillStyle = '#ffffff';
             this.ctx.fillRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
-            
+
             // Draw page border
             this.ctx.strokeStyle = '#d0d0d0';
             this.ctx.lineWidth = 1 / this.viewScale;
             this.ctx.strokeRect(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
-            
+
             // Draw background pattern if selected
             this.drawPageBackground(pageX, pageY, this.A4_WIDTH, this.A4_HEIGHT);
-            
+
             this.ctx.restore();
         }
     }
@@ -754,65 +755,65 @@ class DrawingEngine {
         this.renderAllToContext(ctx);
 
         // Convert world coords to pixel coords (they are the same since we rendered world)
-    const px = Math.round(x);
-    const py = Math.round(y);
-    if (px < 0 || py < 0 || px >= w || py >= h) return null;
+        const px = Math.round(x);
+        const py = Math.round(y);
+        if (px < 0 || py < 0 || px >= w || py >= h) return null;
 
-    // Determine which page the click is on and compute page bounds (world pixels)
-    const relativeY = py - this.PAGE_MARGIN;
-    if (relativeY < 0) return null;
-    const pageSlot = this.A4_HEIGHT + this.PAGE_SPACING;
-    const pageIndex = Math.floor(relativeY / pageSlot);
-    const yInPage = relativeY % pageSlot;
-    // Click in page spacing area => ignore
-    if (yInPage > this.A4_HEIGHT) return null;
+        // Determine which page the click is on and compute page bounds (world pixels)
+        const relativeY = py - this.PAGE_MARGIN;
+        if (relativeY < 0) return null;
+        const pageSlot = this.A4_HEIGHT + this.PAGE_SPACING;
+        const pageIndex = Math.floor(relativeY / pageSlot);
+        const yInPage = relativeY % pageSlot;
+        // Click in page spacing area => ignore
+        if (yInPage > this.A4_HEIGHT) return null;
 
-    const pageTop = this.PAGE_MARGIN + pageIndex * pageSlot;
-    const pageLeft = this.PAGE_MARGIN;
-    const pageRight = pageLeft + this.A4_WIDTH;
-    const pageBottom = pageTop + this.A4_HEIGHT;
+        const pageTop = this.PAGE_MARGIN + pageIndex * pageSlot;
+        const pageLeft = this.PAGE_MARGIN;
+        const pageRight = pageLeft + this.A4_WIDTH;
+        const pageBottom = pageTop + this.A4_HEIGHT;
 
         const img = ctx.getImageData(0, 0, w, h);
         const data = img.data;
 
         // Helper to convert color
         function hexToRgba(hex) {
-            let v = hex.replace('#','');
+            let v = hex.replace('#', '');
             if (v.length === 3) v = v.split('').map(c => c + c).join('');
-            const r = parseInt(v.substring(0,2),16);
-            const g = parseInt(v.substring(2,4),16);
-            const b = parseInt(v.substring(4,6),16);
-            return [r,g,b,255];
+            const r = parseInt(v.substring(0, 2), 16);
+            const g = parseInt(v.substring(2, 4), 16);
+            const b = parseInt(v.substring(4, 6), 16);
+            return [r, g, b, 255];
         }
 
         const fillRgba = hexToRgba(fillColor || '#000000');
 
         const idx = (py * w + px) * 4;
         const targetR = data[idx];
-        const targetG = data[idx+1];
-        const targetB = data[idx+2];
-        const targetA = data[idx+3];
+        const targetG = data[idx + 1];
+        const targetB = data[idx + 2];
+        const targetA = data[idx + 3];
 
         // If target color equals fill color, nothing to do
         if (targetR === fillRgba[0] && targetG === fillRgba[1] && targetB === fillRgba[2] && targetA === fillRgba[3]) {
             return null;
         }
 
-    // Scanline flood fill (confined to the page bounds)
+        // Scanline flood fill (confined to the page bounds)
         const w4 = w * 4;
         const visited = new Uint8Array(w * h);
         const stack = [];
-        stack.push({x: px, y: py});
+        stack.push({ x: px, y: py });
 
         let minX = w, minY = h, maxX = 0, maxY = 0;
-        const colorMatch = (i) => data[i] === targetR && data[i+1] === targetG && data[i+2] === targetB && data[i+3] === targetA;
+        const colorMatch = (i) => data[i] === targetR && data[i + 1] === targetG && data[i + 2] === targetB && data[i + 3] === targetA;
 
-    let changedPixels = 0;
-    let asked = false;
-    const pagePixels = (pageRight - pageLeft + 1) * (pageBottom - pageTop + 1);
-    const thresholdPixels = (this.floodFillConfirmFraction > 0) ? Math.floor(this.floodFillConfirmFraction * pagePixels) : Infinity;
+        let changedPixels = 0;
+        let asked = false;
+        const pagePixels = (pageRight - pageLeft + 1) * (pageBottom - pageTop + 1);
+        const thresholdPixels = (this.floodFillConfirmFraction > 0) ? Math.floor(this.floodFillConfirmFraction * pagePixels) : Infinity;
 
-    while (stack.length) {
+        while (stack.length) {
             const p = stack.pop();
             let x0 = p.x;
             let y0 = p.y;
@@ -833,9 +834,9 @@ class DrawingEngine {
             while (xR <= pageRight && !visited[y0 * w + xR] && colorMatch(idxR)) {
                 // set pixel to fill color
                 data[idxR] = fillRgba[0];
-                data[idxR+1] = fillRgba[1];
-                data[idxR+2] = fillRgba[2];
-                data[idxR+3] = fillRgba[3];
+                data[idxR + 1] = fillRgba[1];
+                data[idxR + 2] = fillRgba[2];
+                data[idxR + 3] = fillRgba[3];
 
                 visited[y0 * w + xR] = 1;
                 changedPixels++;
@@ -867,11 +868,11 @@ class DrawingEngine {
                 const below = y0 + 1;
                 if (above >= pageTop) {
                     const ia = (above * w + xi) * 4;
-                    if (!visited[above * w + xi] && colorMatch(ia)) stack.push({x: xi, y: above});
+                    if (!visited[above * w + xi] && colorMatch(ia)) stack.push({ x: xi, y: above });
                 }
                 if (below <= pageBottom) {
                     const ib = (below * w + xi) * 4;
-                    if (!visited[below * w + xi] && colorMatch(ib)) stack.push({x: xi, y: below});
+                    if (!visited[below * w + xi] && colorMatch(ib)) stack.push({ x: xi, y: below });
                 }
             }
         }
@@ -920,11 +921,11 @@ class DrawingEngine {
         if (this.backgroundType === 'white') {
             return; // Already drawn white background
         }
-        
+
         this.ctx.save();
         this.ctx.strokeStyle = this.patternColor;
         this.ctx.lineWidth = 0.5 / this.viewScale;
-        
+
         if (this.backgroundType === 'lines') {
             // Draw horizontal lines every 25px
             for (let lineY = y + 25; lineY < y + height; lineY += 25) {
@@ -958,7 +959,7 @@ class DrawingEngine {
                 }
             }
         }
-        
+
         this.ctx.restore();
     }
 
@@ -1118,18 +1119,18 @@ class DrawingEngine {
         // Check if coordinates are within any page bounds
         const pageX = this.PAGE_MARGIN;
         const pageRight = this.PAGE_MARGIN + this.A4_WIDTH;
-        
+
         if (x < pageX || x > pageRight) {
             return false;
         }
-        
+
         // Check which page this Y coordinate belongs to
         const relativeY = y - this.PAGE_MARGIN;
         if (relativeY < 0) return false;
-        
+
         const pageIndex = Math.floor(relativeY / (this.A4_HEIGHT + this.PAGE_SPACING));
         const yInPage = relativeY % (this.A4_HEIGHT + this.PAGE_SPACING);
-        
+
         // Return true if Y is within page bounds (not in spacing area)
         return yInPage <= this.A4_HEIGHT;
     }
@@ -1138,24 +1139,24 @@ class DrawingEngine {
         // Constrain coordinates to nearest page bounds
         const pageX = this.PAGE_MARGIN;
         const pageRight = this.PAGE_MARGIN + this.A4_WIDTH;
-        
+
         // Constrain X to page width
         x = Math.max(pageX, Math.min(pageRight, x));
-        
+
         // Constrain Y to page bounds
         const relativeY = y - this.PAGE_MARGIN;
         if (relativeY < 0) {
             return { x, y: this.PAGE_MARGIN };
         }
-        
+
         const pageIndex = Math.floor(relativeY / (this.A4_HEIGHT + this.PAGE_SPACING));
         const yInPage = relativeY % (this.A4_HEIGHT + this.PAGE_SPACING);
-        
+
         if (yInPage > this.A4_HEIGHT) {
             // In spacing area, snap to bottom of current page or top of next page
             const currentPageBottom = this.PAGE_MARGIN + pageIndex * (this.A4_HEIGHT + this.PAGE_SPACING) + this.A4_HEIGHT;
             const nextPageTop = this.PAGE_MARGIN + (pageIndex + 1) * (this.A4_HEIGHT + this.PAGE_SPACING);
-            
+
             // Choose closer boundary
             if (y - currentPageBottom < nextPageTop - y) {
                 y = currentPageBottom;
@@ -1163,7 +1164,7 @@ class DrawingEngine {
                 y = nextPageTop;
             }
         }
-        
+
         return { x, y };
     }
 
@@ -1226,36 +1227,36 @@ class DrawingEngine {
         obj.timestamp = Date.now(); // Add timestamp to all objects
         GeometryUtils.ensureTransform(obj);
         this.drawnObjects.push(obj);
-        
+
         // Check if we need to add a timestamp
         this.checkAndAddTimestamp();
-        
+
         // Trigger auto-formula tracking for drawing objects
         if (obj.type === 'path' || obj.type === 'line' || obj.type === 'circle' || obj.type === 'rect') {
             let strokeY = obj.startY || 0;
             if (obj.type === 'path' && obj.points && obj.points.length > 0) {
                 strokeY = obj.points[0].y;
             }
-            
+
             // Check for new line BEFORE adding current stroke to tracking
             const shouldTriggerNewLine = this.shouldTriggerNewLine(strokeY);
-            
+
             if (shouldTriggerNewLine) {
                 // Trigger with current strokes (excluding this new line stroke)
                 console.log(`📏 New line detected! Triggering before adding current stroke`);
                 this.triggerAutoFormula('new_line');
                 // After trigger, tracking is reset and we'll add the current stroke to fresh tracking
             }
-            
+
             // Add to auto-formula tracking (separate from visible selection)
             if (this.autoFormulaEnabled) {
                 this.autoFormulaStrokeIds.add(obj.id);
                 console.log(`➕ Added stroke ${obj.id} (${obj.type}) to auto-formula tracking`);
             }
-            
+
             this.onStrokeAdded(strokeY, shouldTriggerNewLine);
         }
-        
+
         return obj;
     }
 
@@ -1269,16 +1270,16 @@ class DrawingEngine {
 
     addTimestampObject() {
         const now = new Date();
-        const timeString = now.toLocaleTimeString('it-IT', { 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
+        const timeString = now.toLocaleTimeString('it-IT', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
         });
-        
+
         // Find a good position for the timestamp (top-right of current view)
         const x = this.viewOffsetX + (this.previewCanvas.width / this.viewScale) - 150;
         const y = this.viewOffsetY + 30;
-        
+
         const timestampObj = {
             id: this.idGenerator.generate(),
             type: 'timestamp',
@@ -1290,14 +1291,14 @@ class DrawingEngine {
             timestamp: now.getTime(),
             transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
         };
-        
+
         this.drawnObjects.push(timestampObj);
         console.log(`Added drawing timestamp: ${timeString}`);
     }
 
     removeSelectedObjects() {
         if (this.selectedIds.size === 0) return false;
-        
+
         this.drawnObjects = this.drawnObjects.filter(o => !this.selectedIds.has(o.id));
         this.selectedIds.clear();
         return true;
@@ -1315,6 +1316,39 @@ class DrawingEngine {
             this.autoFormulaStrokeIds.delete(id);
         });
         return removed;
+    }
+
+    // Atomic replacement of old objects with new ones
+    replaceObjects(oldIds, newObjects) {
+        const idSet = new Set(oldIds);
+
+        // 1. Remove old objects
+        const beforeLen = this.drawnObjects.length;
+        this.drawnObjects = this.drawnObjects.filter(o => !idSet.has(o.id));
+
+        // 2. Prepare and add new objects
+        const preparedNew = newObjects.map(obj => {
+            if (!obj.id) obj.id = this.idGenerator.generate();
+            if (!obj.timestamp) obj.timestamp = Date.now();
+            GeometryUtils.ensureTransform(obj);
+            return obj;
+        });
+
+        this.drawnObjects.push(...preparedNew);
+
+        // 3. Clear from selection tracking
+        oldIds.forEach(id => {
+            this.selectedIds.delete(id);
+            this.autoFormulaStrokeIds.delete(id);
+        });
+
+        // 4. Trigger state update once
+        if (window.app && window.app.historyManager) {
+            window.app.historyManager.pushHistory(this.getState());
+        }
+
+        this.redrawAll();
+        return true;
     }
 
     // Return list of stroke object ids that intersect a given world-space point
@@ -1369,7 +1403,7 @@ class DrawingEngine {
     estimatePathCoverage(pathObj, sampleResolution = 18) {
         if (!pathObj || pathObj.type !== 'path' || !Array.isArray(pathObj.points) || pathObj.points.length < 2) return 0;
 
-    const b = GeometryUtils.objectBounds(pathObj);
+        const b = GeometryUtils.objectBounds(pathObj);
         const width = b.maxX - b.minX;
         const height = b.maxY - b.minY;
         if (width <= 0 || height <= 0) return 0;
@@ -1399,7 +1433,7 @@ class DrawingEngine {
     isScribbleDeleterCandidate(pathObj) {
         if (!pathObj || pathObj.type !== 'path' || !Array.isArray(pathObj.points) || pathObj.points.length < 2) return false;
 
-    const b = GeometryUtils.objectBounds(pathObj);
+        const b = GeometryUtils.objectBounds(pathObj);
         const width = b.maxX - b.minX;
         const height = b.maxY - b.minY;
 
@@ -1431,7 +1465,7 @@ class DrawingEngine {
                 }
             }
         }
-        console.log(`Scribble deleter check: width=${width.toFixed(1)}, height=${height.toFixed(1)}, coverage=${(coverage*100).toFixed(1)}%, inversions=${inversions}`);
+        console.log(`Scribble deleter check: width=${width.toFixed(1)}, height=${height.toFixed(1)}, coverage=${(coverage * 100).toFixed(1)}%, inversions=${inversions}`);
         if (inversions < 4) return false;
         return true;
     }
@@ -1442,7 +1476,7 @@ class DrawingEngine {
 
     clearSelection() {
         this.selectedIds.clear();
-        
+
         // Update toolbar selection state
         if (window.app && window.app.toolbarManager) {
             window.app.toolbarManager.updateSelectionState();
@@ -1487,11 +1521,11 @@ class DrawingEngine {
         this.viewOffsetY = 0;
         this.viewScale = 1;
         this.lastTimestampTime = 0;
-        
+
         // Reset to A4 dimensions with 2 pages
         this.canvas.width = this.A4_WIDTH;
         this.canvas.height = this.A4_HEIGHT * 2;
-        
+
         this.updateZoomLabel();
     }
 
@@ -1539,10 +1573,10 @@ class DrawingEngine {
 
     shouldTriggerNewLine(strokeY) {
         if (!this.autoFormulaEnabled || this.autoFormulaStartTime === null) return false;
-        
+
         const strokeCount = this.autoFormulaStrokeIds.size;
         const timeSinceStart = Date.now() - this.autoFormulaStartTime;
-        
+
         // Check for new line (significant Y position change) - be more conservative
         if (this.lastStrokeY !== null && strokeY > this.lastStrokeY + this.newLineThreshold) {
             // Only trigger if we have multiple strokes and enough time has passed
@@ -1560,7 +1594,7 @@ class DrawingEngine {
         if (!this.autoFormulaEnabled) return;
 
         const now = Date.now();
-        
+
         // Start tracking if this is the first stroke
         if (this.autoFormulaStartTime === null) {
             this.resetAutoFormulaTracking();
@@ -1569,7 +1603,7 @@ class DrawingEngine {
         this.lastStrokeTime = now;
         const strokeCount = this.autoFormulaStrokeIds.size;
         const timeSinceStart = now - this.autoFormulaStartTime;
-        
+
         console.log(`✏️ Stroke added at Y=${strokeY}, count=${strokeCount}, time since start=${timeSinceStart}ms${alreadyTriggeredNewLine ? ' (after new line trigger)' : ''}`);
 
         // Skip new line detection if we already triggered due to new line
@@ -1582,11 +1616,11 @@ class DrawingEngine {
         // Clear previous timeout and set new one FROM LAST STROKE TIME
         this.clearAutoFormulaTimeout();
         console.log(`⏰ Setting ${this.autoFormulaIdleTime}ms timeout from LAST stroke (now)`);
-        
+
         this.autoFormulaTimeout = setTimeout(() => {
             const timeFromLastStroke = Date.now() - this.lastStrokeTime;
             console.log(`⏰ Timeout fired! Time from last stroke: ${timeFromLastStroke}ms, stroke count: ${this.autoFormulaStrokeIds.size}`);
-            
+
             // Only trigger if we have enough strokes
             if (this.autoFormulaStrokeIds.size >= 2) {
                 console.log(`✅ Triggering auto-formula due to idle timeout`);
@@ -1599,18 +1633,18 @@ class DrawingEngine {
 
     onScrollChanged() {
         if (!this.autoFormulaEnabled) return;
-        
+
         const currentScrollY = window.scrollY || 0;
         const scrollDiff = Math.abs(currentScrollY - this.lastScrollY);
-        
+
         if (scrollDiff > this.scrollThreshold) {
             const strokeCount = this.autoFormulaStrokeIds.size;
             const timeSinceStart = this.autoFormulaStartTime ? (Date.now() - this.autoFormulaStartTime) : 0;
-            
+
             console.log(`📜 Scroll detected! Diff: ${scrollDiff}px (threshold: ${this.scrollThreshold}px)`);
-            
+
             // Only trigger if we have enough strokes and enough time has passed
-            if (strokeCount >= 2 && 
+            if (strokeCount >= 2 &&
                 this.autoFormulaStartTime !== null &&
                 timeSinceStart > 2000) {
                 console.log(`✅ Triggering auto-formula due to scroll`);
@@ -1627,21 +1661,21 @@ class DrawingEngine {
         const strokeCount = this.autoFormulaStrokeIds.size;
         const timeSinceStart = Date.now() - this.autoFormulaStartTime;
         const timeSinceLastStroke = this.lastStrokeTime ? (Date.now() - this.lastStrokeTime) : 'N/A';
-        
+
         console.log(`🚀 Auto formula triggered by: ${reason}`);
         console.log(`📊 Stats: ${strokeCount} strokes, ${timeSinceStart}ms since start, ${timeSinceLastStroke}ms since last stroke`);
-        
+
         // Clear the timeout to prevent duplicate triggers
         this.clearAutoFormulaTimeout();
-        
+
         // Capture strokes to convert BEFORE resetting (prevent new strokes from being included)
         const strokeIdsToConvert = new Set(this.autoFormulaStrokeIds);
-        
+
         // Reset tracking IMMEDIATELY to prevent new strokes from being included
         this.resetAutoFormulaTracking();
-        
+
         // Find strokes to convert using the captured IDs
-        const strokesToConvert = this.drawnObjects.filter(obj => 
+        const strokesToConvert = this.drawnObjects.filter(obj =>
             strokeIdsToConvert.has(obj.id)
         );
 
@@ -1657,17 +1691,17 @@ class DrawingEngine {
             try {
                 // Temporarily store the stroke IDs for LaTeX renderer to use
                 window.LatexRenderer.tempStrokeSelection = strokeIdsToConvert;
-                
+
                 await window.LatexRenderer.convertToLatex();
-                
+
                 // Auto-add to canvas if conversion was successful
                 setTimeout(() => {
-                    if (window.LatexRenderer.lastLatexResult && 
+                    if (window.LatexRenderer.lastLatexResult &&
                         window.LatexRenderer.lastLatexResult.trim() &&
                         window.LatexRenderer.elements.addLatexBtn.style.display !== 'none') {
                         window.LatexRenderer.addLatexToCanvas();
                     }
-                    
+
                     // Clean up temporary selection
                     delete window.LatexRenderer.tempStrokeSelection;
                 }, 100);

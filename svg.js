@@ -6,6 +6,8 @@ class SvgConverter {
     constructor() {
         this.lastConversionMeta = {};
         this.lastSvgResult = '';
+        this.lastConversionTime = 0;
+        this.requestedTime = 0;
 
         this.elements = {
             aiStatus: document.getElementById('ai-svg-status'),
@@ -39,11 +41,13 @@ class SvgConverter {
         }
 
         try {
+            this.requestedTime = Date.now();
             const base64Image = this.captureCanvasImage();
             console.log('Captured image size (base64 length):', base64Image ? base64Image.length : 0);
             this.elements.aiStatus.textContent = 'Converting to SVG...';
 
-            const prompt = `Convert the handwritten strokes in the provided image into a clean, minimal SVG representation of the strokes and shapes only. Return only the raw SVG markup (an <svg>...</svg> block). Do not include any explanations or additional text. Use stroke="black" and stroke-width values that approximate the original thickness. Preserve relative layout and scale so the SVG can be placed over the original bounding box.`;
+            //const prompt = `Convert the handwritten strokes in the provided image into a clean, minimal SVG representation of the strokes and shapes only. Return only the raw SVG markup (an <svg>...</svg> block). Do not include any explanations or additional text. Use stroke="black" and stroke-width values that approximate the original thickness. Preserve relative layout and scale so the SVG can be placed over the original bounding box.`;
+            const prompt = `Convert the prodvided image into a nice looking SVG for lecture notes. Use stroke="black" and stroke-width values that approximate the original thickness. Preserve relative layout and scale so the SVG can be placed over the original bounding box. Return only the raw SVG markup (an <svg>...</svg> block). Do not include any explanations or additional text.`
 
             const svgText = await ApiManager.callGeminiApi(base64Image, prompt);
             console.log('Received response from ApiManager (length):', svgText ? svgText.length : 0);
@@ -74,14 +78,41 @@ class SvgConverter {
         const tctx = temp.getContext('2d');
 
         const strokeSelection = this.tempStrokeSelection || null;
-        const hasSelection = strokeSelection || drawingEngine.selectedIds.size > 0;
+        let hasSelection = strokeSelection || drawingEngine.selectedIds.size > 0;
+
+        // Fallback: If no manual selection, take all strokes since last conversion (max 1 min back)
+        if (!hasSelection) {
+            const now = Date.now();
+            const oneMinuteAgo = now - 60000;
+            const startTime = Math.max(this.lastConversionTime, oneMinuteAgo);
+
+            const recentStrokes = drawingEngine.drawnObjects.filter(o =>
+                o.timestamp && o.timestamp > startTime &&
+                ['path', 'line', 'circle', 'rect'].includes(o.type)
+            );
+
+            if (recentStrokes.length > 0) {
+                const recentIds = new Set(recentStrokes.map(o => o.id));
+                hasSelection = true;
+                this.tempSelectionIds = recentIds;
+                console.log(`🕒 Using fallback selection for SVG: ${recentStrokes.length} recent strokes since ${new Date(startTime).toLocaleTimeString()}`);
+            }
+        }
 
         if (hasSelection) {
             let selected;
+            let currentSelectionIds;
+
             if (strokeSelection) {
                 selected = drawingEngine.drawnObjects.filter(o => strokeSelection.has(o.id));
+                currentSelectionIds = strokeSelection;
+            } else if (this.tempSelectionIds) {
+                selected = drawingEngine.drawnObjects.filter(o => this.tempSelectionIds.has(o.id));
+                currentSelectionIds = this.tempSelectionIds;
+                delete this.tempSelectionIds;
             } else {
                 selected = drawingEngine.drawnObjects.filter(o => drawingEngine.selectedIds.has(o.id));
+                currentSelectionIds = new Set(drawingEngine.selectedIds);
             }
 
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -104,7 +135,7 @@ class SvgConverter {
             selected.forEach(o => drawingEngine.drawObject(tctx, o));
 
             this.lastConversionMeta = {
-                selection: strokeSelection ? strokeSelection : new Set(drawingEngine.selectedIds),
+                selection: currentSelectionIds,
                 bounds: { minX, minY, maxX, maxY }
             };
         } else {
@@ -134,25 +165,12 @@ class SvgConverter {
         if (!svgText.trim() || !this.lastConversionMeta.bounds) return;
 
         const drawingEngine = window.app.drawingEngine;
-
-        // Optionally remove original strokes if selection was used
-        if (this.lastConversionMeta.selection && this.lastConversionMeta.selection.size > 0) {
-            drawingEngine.drawnObjects = drawingEngine.drawnObjects.filter(o => 
-                !this.lastConversionMeta.selection.has(o.id)
-            );
-            drawingEngine.selectedIds.clear();
-            if (window.app.historyManager) {
-                window.app.historyManager.pushHistory(drawingEngine.getState());
-            }
-        }
-
         const bounds = this.lastConversionMeta.bounds;
 
         // Store SVG as dataUrl image for rendering on canvas
         const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
 
         const newImageObj = {
-            id: drawingEngine.idGenerator.generate(),
             type: 'image',
             dataUrl: svgDataUrl,
             startX: bounds.minX,
@@ -162,12 +180,19 @@ class SvgConverter {
             transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
         };
 
-        drawingEngine.drawnObjects.push(newImageObj);
-        if (window.app.historyManager) {
-            window.app.historyManager.pushHistory(drawingEngine.getState());
-        }
-        drawingEngine.redrawAll();
+        const oldIds = this.lastConversionMeta.selection ? Array.from(this.lastConversionMeta.selection) : [];
+
+        // Use atomic replacement
+        drawingEngine.replaceObjects(oldIds, [newImageObj]);
+
+        // Update timing and UI
+        this.lastConversionTime = this.requestedTime;
         if (this.elements.addSvgBtn) this.elements.addSvgBtn.style.display = 'none';
+
+        // Force immediate save for critical state change
+        if (window.app.historyManager) {
+            window.app.historyManager.scheduleAutosave(true);
+        }
     }
 }
 
