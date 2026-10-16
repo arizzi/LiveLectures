@@ -67,7 +67,9 @@ class TranscriptionManager {
                 // Reset tracking when restarting recognition
                 this.lastProcessedResultIndex = -1;
                 // Restart recognition if we're still supposed to be listening
-                this.recognition.start();
+                try { this.recognition.start(); } catch (error) {
+                    this.isListening = false; this.elements.status.textContent = error.message;
+                }
             } else {
                 this.elements.status.textContent = 'Transcription is stopped.';
                 this.updateToolbarButton(false);
@@ -75,6 +77,8 @@ class TranscriptionManager {
         };
 
         this.recognition.onerror = (event) => {
+            this.isListening = false;
+            this.addTextToMainDocument();
             this.elements.status.textContent = 'Error: ' + event.error;
             this.updateToolbarButton(false);
         };
@@ -166,6 +170,7 @@ class TranscriptionManager {
             this.elements.interim.textContent = '';
 
             this.lastSpeechTime = currentTime;
+            this.addTextToMainDocument();
         }
 
         // Handle interim results
@@ -236,6 +241,7 @@ class TranscriptionManager {
             color: '#0066cc',
             fontSize: 14,
             timestamp: now.getTime(),
+            recordingId: window.app.workspace?.activeRecording?.id || null,
             speechText: currentText,
             transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
         };
@@ -286,6 +292,7 @@ class TranscriptionManager {
         }
 
         this.isListening = false;
+        this.addTextToMainDocument();
         
         try {
             this.recognition.stop();

@@ -709,6 +709,11 @@ class ToolbarManager {
         // Show this one if it wasn't visible
         if (!isVisible) {
             submenu.classList.add('show');
+            const rect = button.getBoundingClientRect();
+            submenu.style.position = 'fixed';
+            submenu.style.top = rect.bottom + 4 + 'px';
+            submenu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 250)) + 'px';
+            submenu.style.zIndex = '4000';
         }
     }
 
@@ -758,9 +763,10 @@ class ToolbarManager {
        API Key Management
        ========================================================================== */
     handleApiKeySetup() {
-        const newKey = prompt('Please paste your Gemini API Key:', window.NotesApp.GEMINI_API_KEY);
-        if (ApiManager.updateApiKey(newKey)) {
-            alert('API Key updated.');
+        if (window.app?.workspace) {
+            document.getElementById('lecture-workspace').hidden = false;
+            window.app.workspace.tab('storage');
+            document.getElementById('ai-key').focus();
         }
         this.hideAllSubmenus();
     }
@@ -1082,6 +1088,7 @@ class ToolbarManager {
             const backgroundType = selectedOption.dataset.type;
             window.app.drawingEngine.backgroundType = backgroundType;
             window.app.drawingEngine.patternColor = patternColor;
+            window.app.historyManager.pushHistory(window.app.drawingEngine.getState());
             window.app.drawingEngine.redrawAll();
         }
         

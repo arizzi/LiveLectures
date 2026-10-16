@@ -1,0 +1,52 @@
+<header class="workspace-header"><h2>Lectures</h2><button id="workspace-close" aria-label="Close lectures">×</button></header>
+<p id="workspace-message" role="status" aria-live="polite"></p>
+<nav class="workspace-tabs" aria-label="Lecture workspace">
+<button data-tab="library">Library</button><button data-tab="pages">Pages</button><button data-tab="study">Study</button><button data-tab="recording">Audio</button><button data-tab="storage">Storage</button>
+</nav>
+<section data-section="library">
+<label>Title<input id="lecture-title" maxlength="200"></label>
+<label>Course<input id="lecture-course" maxlength="200"></label>
+<label>Date<input id="lecture-date" type="date"></label>
+<label>Tags (comma separated)<input id="lecture-tags" maxlength="500"></label>
+<div class="workspace-actions"><button id="lecture-new">New lecture</button><button id="lecture-save">Save now</button></div>
+<label>Find lectures<input id="library-search" type="search" placeholder="Title, course or tag"></label>
+<div id="lecture-list"></div>
+<h3>Recovery versions</h3><div id="recovery-list"></div>
+</section>
+<section data-section="pages" hidden>
+<label>Import PDF slides<input id="slides-file" type="file" accept="application/pdf"></label>
+<p>Slides are fitted to the page and saved locally. PDF imports append pages.</p>
+<div class="workspace-actions"><button id="page-add">Add page</button><button id="page-export">Export checked pages to PDF</button></div>
+<div id="page-list"></div>
+</section>
+<section data-section="study" hidden>
+<label>Search notes, formulas and transcript<input id="document-search" type="search"></label><div id="search-results"></div>
+<label>Typed note<textarea id="typed-note" rows="3"></textarea></label><button id="note-add">Add note at current view</button>
+<label>LaTeX source<textarea id="manual-latex" rows="3" placeholder="E = mc^2"></textarea></label>
+<div id="formula-preview" aria-label="Formula preview"></div>
+<div class="workspace-actions"><button id="formula-preview-btn">Preview</button><button id="formula-add">Add formula / replace selection</button><button id="formula-restore">Restore selected handwriting</button></div>
+<label>Bookmark label<input id="bookmark-label" maxlength="200" placeholder="Important, question, review later…"></label><button id="bookmark-add">Bookmark current view</button><div id="bookmark-list"></div>
+<h3>Flashcards</h3><label>Question<input id="card-question" maxlength="1000"></label><label>Answer<textarea id="card-answer" rows="2"></textarea></label>
+<div class="workspace-actions"><button id="card-add">Add linked card</button><button id="card-ai">Generate from selection with AI</button><button id="markdown-export">Export selected / all as Markdown</button></div><div id="card-list"></div>
+</section>
+<section data-section="recording" hidden>
+<label>Transcript language<select id="speech-language"><option value="it-IT">Italian</option><option value="en-US">English</option><option value="fr-FR">French</option><option value="de-DE">German</option><option value="es-ES">Spanish</option><option value="pt-BR">Portuguese</option><option value="zh-CN">Chinese</option><option value="ja-JP">Japanese</option></select></label>
+<button id="speech-toggle">Start / stop transcription</button><p>Browser speech recognition may use a remote service. Recording below stores microphone audio on this device.</p>
+<button id="audio-record">Record microphone</button><span id="audio-state" role="status"></span>
+<div id="recording-list"></div>
+<label><input id="replay-enabled" type="checkbox"> Reveal handwriting along with audio playback</label>
+<button id="replay-stop">Show complete lecture</button><div id="transcript-list"></div>
+</section>
+<section data-section="storage" hidden>
+<h3>Files and recovery</h3><div class="workspace-actions"><button id="file-save">Save document…</button><button id="bundle-export">Export complete lecture bundle</button></div>
+<label>Open document or lecture bundle<input id="lecture-file" type="file" accept=".json,.lecture,application/json,application/gzip"></label>
+<p>JSON contains notes and slides. Bundles also contain audio. Opening a file creates a new local lecture.</p>
+<button id="storage-persist">Keep local storage</button><p id="storage-usage"></p>
+<h3>Google Drive (optional)</h3>
+<label>OAuth client ID<input id="drive-client" placeholder="…apps.googleusercontent.com"></label><label>Google Picker API key<input id="drive-key" type="password" autocomplete="off"></label>
+<div class="workspace-actions"><button id="drive-connect">Connect Drive</button><button id="drive-backup">Back up complete lecture</button><button id="drive-open">Open from Drive</button><button id="drive-disconnect">Disconnect</button></div>
+<p>Configure this site's HTTPS origin in Google Cloud. Each backup creates a new timestamped file, preserving edits from other devices.</p>
+<h3>AI settings</h3><label>Gemini API key<input id="ai-key" type="password" autocomplete="off"></label><label><input id="ai-remember" type="checkbox"> Remember key on this device</label>
+<label>Gemini model<input id="ai-model" placeholder="Model ID from Google AI Studio"></label><button id="ai-settings-save">Save AI settings</button><button id="ai-cancel">Cancel active AI request</button>
+<h3>Pen and display</h3><label>Pen side button<select id="pen-button"><option value="eraser">Eraser</option><option value="hand">Pan</option><option value="select">Select</option><option value="none">Ignore</option></select></label><label><input id="pen-tilt" type="checkbox"> Tilt activates eraser</label><button id="focus-toggle">Toggle focus mode</button>
+</section>

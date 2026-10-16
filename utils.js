@@ -6,6 +6,7 @@
 window.NotesApp = {
     VERSION: '2.1',
     GEMINI_API_KEY: localStorage.getItem('gemini_api_key') || '',
+    GEMINI_MODEL: localStorage.getItem('gemini_model') || '',
     MIN_ZOOM: 0.25,
     MAX_ZOOM: 3,
     ZOOM_STEP: 0.1,
@@ -18,6 +19,67 @@ console.log('Notes App v' + window.NotesApp.VERSION);
 /* ==========================================================================
    History Management
    ========================================================================== */
+// Version 2 keeps JSON portable while removing repeated point keys and runtime caches.
+class DocumentCodec {
+    static runtimeKeys = new Set(['img', 'cachedImg', 'renderedSvg', 'isRendering']);
+
+    static packObject(object) {
+        const packed = {};
+        for (const [key, value] of Object.entries(object)) {
+            if (this.runtimeKeys.has(key)) continue;
+            if (key === 'points' && Array.isArray(value) && value.every(point =>
+                Object.keys(point).every(k => ['x', 'y', 'pressure'].includes(k)) &&
+                Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.pressure))) {
+                const data = new Array(value.length * 3);
+                for (let i = 0; i < value.length; i++) {
+                    data[i * 3] = value[i].x;
+                    data[i * 3 + 1] = value[i].y;
+                    data[i * 3 + 2] = value[i].pressure;
+                }
+                packed.pointData = data;
+            } else {
+                packed[key] = value;
+            }
+        }
+        return packed;
+    }
+
+    static unpackObject(object) {
+        const result = { ...object };
+        // Runtime rendering state must never be restored from a document.
+        for (const key of this.runtimeKeys) delete result[key];
+        if (Object.hasOwn(result, 'pointData')) {
+            const data = result.pointData;
+            if (!Array.isArray(data) || data.length % 3 || !data.every(Number.isFinite)) {
+                throw new Error('Invalid stroke point data');
+            }
+            result.points = [];
+            for (let i = 0; i < data.length; i += 3) {
+                result.points.push({ x: data[i], y: data[i + 1], pressure: data[i + 2] });
+            }
+            delete result.pointData;
+        }
+        return result;
+    }
+
+    static encode(state) {
+        return { ...state, version: 2, drawnObjects: state.drawnObjects.map(o => this.packObject(o)) };
+    }
+
+    static decode(data) {
+        if (!data || typeof data !== 'object' || !Array.isArray(data.drawnObjects)) {
+            throw new Error('Invalid notes document');
+        }
+        if (data.version !== 2) {
+            throw new Error('Unsupported notes document version');
+        }
+        return { ...data, drawnObjects: data.drawnObjects.map(o => {
+            if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('Invalid drawing object');
+            return this.unpackObject(o);
+        }) };
+    }
+}
+
 class HistoryManager {
     constructor() {
         this.history = [];
@@ -26,75 +88,75 @@ class HistoryManager {
     }
 
     pushHistory(state) {
-        const snap = JSON.stringify(state);
-        this.history.push(snap);
-        if (this.history.length > window.NotesApp.HISTORY_LIMIT) {
-            this.history.shift();
-        }
+        // Immutable entries share unchanged object payloads with the previous snapshot.
+        // Compare serialized content, rather than identity: the drawing engine mutates objects.
+        const previous = this.history[this.history.length - 1];
+        const byId = new Map(previous ? previous.objects.map(entry => [entry.id, entry]) : []);
+        const objects = state.drawnObjects.map(object => {
+            const json = JSON.stringify(DocumentCodec.packObject(object));
+            const old = byId.get(object.id);
+            return old && old.json === json ? old : { id: object.id, json };
+        });
+        const { drawnObjects, ...metadata } = state;
+        this.history.push({ metadata: JSON.stringify(metadata), objects });
+        if (this.history.length > window.NotesApp.HISTORY_LIMIT) this.history.shift();
         this.redoStack.length = 0;
+        this.onChange?.();
         this.scheduleAutosave();
     }
 
+    restore(snapshot) {
+        return { ...JSON.parse(snapshot.metadata), drawnObjects: snapshot.objects.map(entry =>
+            DocumentCodec.unpackObject(JSON.parse(entry.json))) };
+    }
+
     undo() {
-        if (this.history.length > 1) {
-            const current = this.history.pop();
-            this.redoStack.push(current);
-            return JSON.parse(this.history[this.history.length - 1]);
-        }
-        return null;
+        if (this.history.length <= 1) return null;
+        this.redoStack.push(this.history.pop());
+        this.onChange?.();
+        this.scheduleAutosave();
+        return this.restore(this.history[this.history.length - 1]);
     }
 
     redo() {
-        if (this.redoStack.length > 0) {
-            const snap = this.redoStack.pop();
-            this.history.push(snap);
-            return JSON.parse(snap);
-        }
-        return null;
+        if (!this.redoStack.length) return null;
+        const snapshot = this.redoStack.pop();
+        this.history.push(snapshot);
+        this.onChange?.();
+        this.scheduleAutosave();
+        return this.restore(snapshot);
     }
 
     scheduleAutosave(force = false) {
-        if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
-        const saveFunc = () => {
-            const snap = this.history.length ?
-                this.history[this.history.length - 1] :
-                JSON.stringify(this.getCurrentState());
+        clearTimeout(this.autosaveTimer);
+        const save = () => {
             try {
-                localStorage.setItem('notes.autosave', snap);
-            } catch (e) {
-                console.warn('Failed to autosave:', e);
+                const snapshot = this.history[this.history.length - 1];
+                // Reuse packed payloads instead of serializing the live drawing a second time.
+                const json = snapshot ?
+                    snapshot.metadata.slice(0, -1) +
+                        (snapshot.metadata.length > 2 ? ',' : '') +
+                        '"version":2,"drawnObjects":[' +
+                        snapshot.objects.map(entry => entry.json).join(',') + ']}' :
+                    JSON.stringify(DocumentCodec.encode(this.getCurrentState()));
+                return this.persist ? this.persist(json) : Promise.resolve();
+            } catch (error) {
+                console.warn('Failed to autosave:', error);
             }
         };
-
-        if (force) {
-            saveFunc();
-        } else {
-            this.autosaveTimer = setTimeout(saveFunc, 500);
-        }
+        if (force) return save();
+        this.autosaveTimer = setTimeout(() => Promise.resolve(save()).catch(error =>
+            console.warn('Failed to autosave:', error)), 500);
     }
 
-    loadAutosave() {
-        try {
-            const snap = localStorage.getItem('notes.autosave');
-            if (snap) {
-                return JSON.parse(snap);
-            }
-        } catch (e) {
-            console.warn('Failed to load autosave:', e);
-        }
-        return null;
-    }
-
-    getCurrentState() {
-        // This will be overridden by the main app
-        return {};
-    }
+    getCurrentState() { return {}; }
 }
 
 /* ==========================================================================
    Geometry Utilities
    ========================================================================== */
 class GeometryUtils {
+    static pathBounds = new WeakMap();
     static ensureTransform(obj) {
         if (!obj.transform) {
             obj.transform = { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 };
@@ -112,7 +174,7 @@ class GeometryUtils {
                 maxX: obj.x + width,
                 maxY: obj.y + height
             };
-        } else if (obj.type === 'speech') {
+        } else if (obj.type === 'speech' || obj.type === 'text') {
             // Approximate bounds for speech text (word-wrapped)
             const fontSize = obj.fontSize || 14;
             const lineHeight = fontSize + 4;
@@ -130,6 +192,8 @@ class GeometryUtils {
                 maxY: obj.y + height
             };
         } else if (obj.type === 'path') {
+            const cached = this.pathBounds.get(obj.points);
+            if (cached && cached.length === obj.points.length) return cached.bounds;
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             obj.points.forEach(p => {
                 if (p.x < minX) minX = p.x;
@@ -137,7 +201,9 @@ class GeometryUtils {
                 if (p.x > maxX) maxX = p.x;
                 if (p.y > maxY) maxY = p.y;
             });
-            return { minX, minY, maxX, maxY };
+            const bounds = { minX, minY, maxX, maxY };
+            this.pathBounds.set(obj.points, { length: obj.points.length, bounds });
+            return bounds;
         } else if (obj.type === 'line' || obj.type === 'rect') {
             const minX = Math.min(obj.startX, obj.endX);
             const maxX = Math.max(obj.startX, obj.endX);
@@ -267,7 +333,7 @@ class GeometryUtils {
             const bounds = this.objectBounds(obj);
             return local.x >= bounds.minX && local.x <= bounds.maxX &&
                 local.y >= bounds.minY && local.y <= bounds.maxY;
-        } else if (obj.type === 'speech') {
+        } else if (obj.type === 'speech' || obj.type === 'text') {
             const bounds = this.objectBounds(obj);
             return local.x >= bounds.minX && local.x <= bounds.maxX &&
                 local.y >= bounds.minY && local.y <= bounds.maxY;
@@ -295,7 +361,7 @@ class GeometryUtils {
    ========================================================================== */
 class FileManager {
     static exportToJson(data, filename = 'notes.json') {
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(DocumentCodec.encode(data))], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -308,7 +374,7 @@ class FileManager {
         if (!file) return null;
         try {
             const text = await file.text();
-            return JSON.parse(text);
+            return DocumentCodec.decode(JSON.parse(text));
         } catch (e) {
             console.error('Failed to import file:', e);
             throw new Error('Invalid file format');
@@ -337,35 +403,45 @@ class IdGenerator {
    API Manager
    ========================================================================== */
 class ApiManager {
-    static updateApiKey(newKey) {
+    static updateApiKey(newKey, remember = false) {
         if (newKey !== null) {
             window.NotesApp.GEMINI_API_KEY = newKey.trim();
-            localStorage.setItem('gemini_api_key', window.NotesApp.GEMINI_API_KEY);
+            if (remember) localStorage.setItem('gemini_api_key', window.NotesApp.GEMINI_API_KEY);
+            else localStorage.removeItem('gemini_api_key');
             return true;
         }
         return false;
     }
+
+    static cancel() { this.controller?.abort(); }
 
     static async callGeminiApi(base64Image, prompt) {
         if (!window.NotesApp.GEMINI_API_KEY) {
             throw new Error('Gemini API Key is missing. Please set it in the settings menu.');
         }
 
+        if (!window.NotesApp.GEMINI_MODEL) throw new Error('Set a Gemini model ID in Lectures → Storage → AI settings.');
+        this.cancel();
+        this.controller = new AbortController();
+        const controller = this.controller;
+        const timeout = setTimeout(() => controller.abort(), 60000);
+        try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${window.NotesApp.GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(window.NotesApp.GEMINI_MODEL)}:generateContent`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': window.NotesApp.GEMINI_API_KEY },
+                signal: controller.signal,
                 body: JSON.stringify({
                     contents: [{
                         parts: [
                             { text: prompt },
-                            {
+                            ...(base64Image ? [{
                                 inline_data: {
                                     mime_type: 'image/png',
                                     data: base64Image
                                 }
-                            }
+                            }] : [])
                         ]
                     }]
                 })
@@ -373,11 +449,18 @@ class ApiManager {
         );
 
         if (!response.ok) {
-            throw new Error('API Error: ' + response.statusText);
+            const detail = await response.json().catch(() => ({}));
+            throw new Error(detail.error?.message || `AI request failed (${response.status}).`);
         }
 
         const result = await response.json();
-        return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const text = result.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || '';
+        if (!text) throw new Error('AI returned no content. Try a different selection or model.');
+        return text;
+        } finally {
+            clearTimeout(timeout);
+            if (this.controller === controller) this.controller = null;
+        }
     }
 }
 
@@ -415,3 +498,5 @@ window.FileManager = FileManager;
 window.IdGenerator = IdGenerator;
 window.ApiManager = ApiManager;
 window.EventUtils = EventUtils;
+
+window.DocumentCodec = DocumentCodec;

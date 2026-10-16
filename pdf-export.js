@@ -25,7 +25,7 @@ class PDFExporter {
         try {
             // Load jsPDF library dynamically
             if (typeof window.jsPDF === 'undefined') {
-                await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+                await this.loadScript('vendor/jspdf.umd.min.js');
             }
             
             // jsPDF might be available as window.jsPDF or window.jspdf.jsPDF
@@ -61,122 +61,48 @@ class PDFExporter {
     /* ==========================================================================
        PDF Export Functions
        ========================================================================== */
-    async exportToPDF(drawingEngine, filename = 'notes.pdf') {
-        if (!this.isLoaded) {
-            console.log('PDF library not loaded, attempting to load...');
-            await this.loadjsPDF();
-        }
-        
-        if (!this.isLoaded || !this.jsPDF) {
-            throw new Error('jsPDF library not available. Please check your internet connection and try again.');
-        }
-
-        try {
-            // Ensure all LaTeX objects are rendered before export
-            await this.ensureLatexRendered(drawingEngine);
-            
-            // Create PDF with A4 dimensions (210mm x 297mm)
-            const pdf = new this.jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4',
-                compress: true,
-                precision: 16
-            });
-
-            // Remove any default margins by explicitly setting page dimensions
-            const pageWidth = 210; // A4 width in mm
-            const pageHeight = 297; // A4 height in mm
-            
-            // Calculate scaling factor from pixels to mm
-            // A4 in pixels at 96 DPI: 794x1123
-            // A4 in mm: 210x297
-            const scaleX = pageWidth / drawingEngine.A4_WIDTH;
-            const scaleY = pageHeight / drawingEngine.A4_HEIGHT;
-
-            // Calculate number of pages accounting for margins and spacing
-            const pageMargin = drawingEngine.PAGE_MARGIN || 40;
-            const pageSpacing = drawingEngine.PAGE_SPACING || 20;
-            const totalCanvasHeight = drawingEngine.canvas.height;
-            const numPages = Math.ceil((totalCanvasHeight - pageMargin) / (drawingEngine.A4_HEIGHT + pageSpacing));
-            console.log(`Exporting ${numPages} pages to PDF`);
-            console.log(`Found ${drawingEngine.drawnObjects.length} objects to export`);
-            
-        // Debug: log object types
-        const objectTypes = {};
-        drawingEngine.drawnObjects.forEach(obj => {
-            objectTypes[obj.type] = (objectTypes[obj.type] || 0) + 1;
-            // Log LaTeX object positions
-            if (obj.type === 'latex') {
-                console.log(`LaTeX object ${obj.id} at position (${obj.x}, ${obj.y}), size: ${obj.svgWidth || 'unknown'}x${obj.svgHeight || 'unknown'}`);
+    async exportToPDF(engine, filename = 'notes.pdf', selectedPages = null) {
+        if (!this.isLoaded) await this.loadjsPDF();
+        if (!this.jsPDF) throw new Error('PDF exporter unavailable. Reload the app.');
+        const pages = selectedPages || Array.from({ length: engine.pageCount }, (_, i) => i);
+        if (!pages.length) throw new Error('No pages selected.');
+        if (window.MathJax?.startup?.promise) await MathJax.startup.promise;
+        for (const object of engine.drawnObjects) {
+            if (object.dataUrl) {
+                const image = new Image(); image.src = object.dataUrl;
+                await image.decode(); object.img = image;
             }
-        });
-        console.log('Object types:', objectTypes);            for (let pageIndex = 0; pageIndex < numPages; pageIndex++) {
-                if (pageIndex > 0) {
-                    pdf.addPage();
+            if (object.type === 'latex') {
+                window.LatexRenderer.renderLatexObject(object);
+                const started = Date.now();
+                while (object.isRendering) {
+                    if (Date.now() - started > 10000) throw new Error('Formula rendering timed out.');
+                    await new Promise(resolve => setTimeout(resolve, 20));
                 }
-
-                // Create a temporary canvas for this page
-                const pageCanvas = document.createElement('canvas');
-                pageCanvas.width = drawingEngine.A4_WIDTH;
-                pageCanvas.height = drawingEngine.A4_HEIGHT;
-                const pageCtx = pageCanvas.getContext('2d');
-
-                // Fill with white background
-                pageCtx.fillStyle = '#ffffff';
-                pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-
-                // Draw background pattern if selected
-                this.drawPageBackgroundForPDF(pageCtx, 0, 0, pageCanvas.width, pageCanvas.height, drawingEngine);
-
-                // Calculate page offset accounting for margins and spacing
-                const pageMargin = drawingEngine.PAGE_MARGIN || 40;
-                const pageSpacing = drawingEngine.PAGE_SPACING || 20;
-                const pageOffsetY = pageMargin + pageIndex * (drawingEngine.A4_HEIGHT + pageSpacing);
-                console.log(`Processing page ${pageIndex + 1}, offset: ${pageOffsetY}`);
-
-                // Draw objects that are on this page
-                const objectsOnPage = drawingEngine.drawnObjects.filter(obj => 
-                    this.isObjectOnPage(obj, pageOffsetY, drawingEngine.A4_HEIGHT)
-                );
-                console.log(`Found ${objectsOnPage.length} objects on page ${pageIndex + 1}`);
-                
-                // Summary of object types on this page
-                const pageObjectTypes = {};
-                objectsOnPage.forEach(obj => {
-                    pageObjectTypes[obj.type] = (pageObjectTypes[obj.type] || 0) + 1;
-                });
-                console.log(`Page ${pageIndex + 1} object types:`, pageObjectTypes);
-                
-                for (const obj of objectsOnPage) {
-                    // Create a copy of the object with adjusted coordinates
-                    const adjustedObj = this.adjustObjectForPage(obj, pageOffsetY);
-                    await this.drawObjectToPDF(pageCtx, adjustedObj);
-                }
-
-                // Convert canvas to image and add to PDF
-                const imageData = pageCanvas.toDataURL('image/png');
-                
-                // Add image with precise positioning (no margins)
-                // Some PDF engines may have tiny default margins, so we explicitly set to 0,0
-                pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight, '', 'FAST');
-                
-                console.log(`Added page ${pageIndex + 1} to PDF at (0,0) with size ${pageWidth}x${pageHeight}mm`);
+                if (!object.renderedSvg) throw new Error('A formula could not render. Check its source.');
+                const image = new Image(); image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(object.renderedSvg);
+                await image.decode(); object.cachedImg = image;
             }
-
-            // Save the PDF
-            pdf.save(filename);
-            
-            return true;
-        } catch (error) {
-            console.error('PDF export failed:', error);
-            throw error;
         }
+        const pdf = new this.jsPDF({ unit: 'mm', format: 'a4', compress: true });
+        for (let index = 0; index < pages.length; index++) {
+            if (index) pdf.addPage();
+            const canvas = document.createElement('canvas');
+            canvas.width = engine.A4_WIDTH; canvas.height = engine.A4_HEIGHT;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const offset = engine.PAGE_MARGIN + pages[index] * (engine.A4_HEIGHT + engine.PAGE_SPACING);
+            this.drawPageBackgroundForPDF(ctx, 0, 0, canvas.width, canvas.height, engine);
+            ctx.translate(-engine.PAGE_MARGIN, -offset);
+            for (const object of engine.drawnObjects) {
+                const bounds = GeometryUtils.getTransformedBounds(object);
+                if (bounds.maxY >= offset && bounds.minY <= offset + engine.A4_HEIGHT) engine.drawObject(ctx, object);
+            }
+            pdf.addImage(canvas.toDataURL('image/jpeg', .95), 'JPEG', 0, 0, 210, 297, '', 'FAST');
+            // Text notes and transcripts remain searchable in a companion Markdown export.
+        }
+        pdf.save(filename);
     }
 
-    /* ==========================================================================
-       Helper Functions
-       ========================================================================== */
     async ensureLatexRendered(drawingEngine) {
         // Find all LaTeX objects and ensure they are rendered
         const latexObjects = drawingEngine.drawnObjects.filter(obj => obj.type === 'latex');

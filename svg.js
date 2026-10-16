@@ -159,7 +159,7 @@ class SvgConverter {
         return temp.toDataURL('image/png').split(',')[1];
     }
 
-    addSvgToCanvas() {
+    async addSvgToCanvas() {
         console.log('SvgConverter.addSvgToCanvas() called');
         const svgText = this.lastSvgResult;
         if (!svgText.trim() || !this.lastConversionMeta.bounds) return;
@@ -170,9 +170,14 @@ class SvgConverter {
         // Store SVG as dataUrl image for rendering on canvas
         const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
 
+        const raster = new Image(); raster.src = svgDataUrl;
+        await raster.decode();
+        const canvas = document.createElement('canvas'); canvas.width = Math.min(4096, raster.naturalWidth || 1024);
+        canvas.height = Math.min(4096, raster.naturalHeight || 1024);
+        canvas.getContext('2d').drawImage(raster, 0, 0, canvas.width, canvas.height);
         const newImageObj = {
             type: 'image',
-            dataUrl: svgDataUrl,
+            dataUrl: canvas.toDataURL('image/png'),
             startX: bounds.minX,
             startY: bounds.minY,
             endX: bounds.maxX,

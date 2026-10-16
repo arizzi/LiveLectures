@@ -24,7 +24,7 @@ class NotesApp {
     /* ==========================================================================
        Application Initialization
        ========================================================================== */
-    initialize() {
+    async initialize() {
         console.log('Initializing Notes App v' + window.NotesApp.VERSION);
         
         // Initialize core components
@@ -32,7 +32,16 @@ class NotesApp {
         this.setupCanvases();
         this.setupEventHandlers();
         this.setupSidebar();
-        this.loadAutosave();
+        this.drawingEngine.previewCanvas.style.pointerEvents = 'none';
+        try {
+            const { LectureWorkspace } = await import('./features/workspace.mjs');
+            this.workspace = new LectureWorkspace(this);
+            await this.workspace.start();
+        } catch (error) {
+            console.error('Lecture workspace failed', error);
+            const notice = document.createElement('p'); notice.textContent = 'Local storage unavailable: ' + error.message + '. Export notes before closing.';
+            notice.setAttribute('role', 'alert'); document.querySelector('.toolbar').append(notice);
+        } finally { this.drawingEngine.previewCanvas.style.pointerEvents = ''; }
     // Setup Progressive Web App helpers (service worker + install flow)
     try { this.setupPWA(); } catch (e) { console.warn('PWA setup failed', e); }
         
@@ -115,9 +124,6 @@ class NotesApp {
             const b = document.getElementById('pwa-install-banner');
             if (b && b.parentNode) b.parentNode.removeChild(b);
         });
-        // Run a quick manifest/icon diagnostic to help surface common Android
-        // installability issues (missing PNG icons, unreachable assets).
-        try { this._checkManifestIcons(); } catch (diagErr) { console.debug('Manifest check failed', diagErr); }
     }
 
 
@@ -200,8 +206,9 @@ class NotesApp {
     // icons (192/512) for installability. If a PNG icon isn't found or
     // reachable, write a console warning and show a notice in the UI.
     async _checkManifestIcons() {
+        if (!navigator.onLine) return;
         try {
-            const resp = await fetch('/manifest.json', {cache: 'no-store'});
+            const resp = await fetch('manifest.json', {cache: 'no-store'});
             if (!resp.ok) {
                 console.warn('Could not fetch manifest.json (status ' + resp.status + ')');
                 return;
@@ -220,7 +227,7 @@ class NotesApp {
             // Try fetching the first PNG icon to ensure it's reachable
             for (const icon of pngIcons) {
                 try {
-                    const url = icon.src.startsWith('/') ? icon.src : ('/' + icon.src);
+                    const url = new URL(icon.src, new URL('manifest.json', document.baseURI));
                     const r = await fetch(url, {method: 'HEAD'});
                     if (r.ok) return; // good
                 } catch (err) {
@@ -264,7 +271,7 @@ class NotesApp {
 
     async registerServiceWorker() {
         try {
-            const reg = await navigator.serviceWorker.register('/sw.js');
+            const reg = await navigator.serviceWorker.register('sw.js');
             console.log('Service worker registered with scope:', reg.scope);
         } catch (err) {
             console.warn('Service worker registration failed:', err);
@@ -382,7 +389,7 @@ class NotesApp {
        Pointer Event Handling
        ========================================================================== */
     handlePointerDown(e) {
-        if (e.target.closest('.toolbar')) return;
+        if (e.target.closest('.toolbar') || this.workspace?.replaying) return;
         
         const de = this.drawingEngine;
         const coords = de.getCanvasCoords(e);
@@ -418,8 +425,11 @@ class NotesApp {
 
         // Handle stylus eraser (barrel button) or large tilt -> treat as eraser
         if (this.isPenEraserEvent && this.isPenEraserEvent(e)) {
-            this.startErasing(coords, e);
-            return;
+            const action = localStorage.getItem('pen.button') || 'eraser';
+            if (action === 'hand') this.startPanning(e);
+            else if (action === 'select') this.handleSelectTool(coords, e);
+            else if (action === 'eraser') this.startErasing(coords, e);
+            if (action !== 'none') return;
         }
 
         // Handle touch panning
@@ -473,7 +483,7 @@ class NotesApp {
             const buttons = typeof e.buttons === 'number' ? e.buttons : 0;
             const barrelPressed = (buttons & 2) !== 0;
 
-            return tiltEraser || barrelPressed;
+            return (localStorage.getItem('pen.tilt') === 'true' && tiltEraser) || barrelPressed;
         } catch (err) {
             console.debug('isPenEraserEvent check failed', err);
             return false;
@@ -530,7 +540,7 @@ class NotesApp {
             // If this is a pen, detect tilt/button changes mid-stroke and split path
             if (e.pointerType === 'pen') {
                 const wasErasing = de.isErasing;
-                const nowErasing = this.isPenEraserEvent ? this.isPenEraserEvent(e) : (e.buttons === 2);
+                const nowErasing = (localStorage.getItem('pen.button') || 'eraser') === 'eraser' && this.isPenEraserEvent(e);
                 if (wasErasing !== nowErasing) {
                     // Finish current path and start a new one with the new mode
                     // emulate pointerup then pointerdown behavior to avoid mixed points
@@ -999,18 +1009,18 @@ class NotesApp {
         
         // Constrain panning
         de.viewOffsetX = Math.max(0, Math.min(de.viewOffsetX, 
-            Math.max(0, de.canvas.width - de.previewCanvas.width / de.viewScale)));
+            Math.max(0, de.documentWidth - de.previewCanvas.width / de.viewScale)));
         de.viewOffsetY = Math.max(0, Math.min(de.viewOffsetY, 
-            Math.max(0, de.canvas.height - de.previewCanvas.height / de.viewScale)));
+            Math.max(0, de.documentHeight - de.previewCanvas.height / de.viewScale)));
 
         // Auto-add page when near bottom
-        const nearBottom = de.viewOffsetY + (de.previewCanvas.height / de.viewScale) > de.canvas.height - 50;
+        const nearBottom = de.viewOffsetY + (de.previewCanvas.height / de.viewScale) > de.documentHeight - 50;
         if (nearBottom) {
             const now = performance.now();
             if ((now - de.lastAutoAddTime) > window.NotesApp.AUTO_ADD_COOLDOWN && 
-                (de.canvas.height - de.lastAutoAddHeight) >= de.PAGE_HEIGHT) {
+                (de.documentHeight - de.lastAutoAddHeight) >= de.PAGE_HEIGHT) {
                 this.addPage();
-                de.lastAutoAddHeight = de.canvas.height;
+                de.lastAutoAddHeight = de.documentHeight;
                 de.lastAutoAddTime = now;
             }
         }
@@ -1230,6 +1240,7 @@ class NotesApp {
         const state = this.historyManager.undo();
         if (state) {
             this.drawingEngine.setState(state);
+            this.workspace?.populate();
             this.drawingEngine.redrawAll();
         }
     }
@@ -1238,6 +1249,7 @@ class NotesApp {
         const state = this.historyManager.redo();
         if (state) {
             this.drawingEngine.setState(state);
+            this.workspace?.populate();
             this.drawingEngine.redrawAll();
         }
     }
@@ -1262,41 +1274,12 @@ class NotesApp {
     }
 
     async exportToJson() {
-        const data = {
-            version: 1,
-            drawnObjects: this.drawingEngine.drawnObjects,
-            canvas: {
-                width: this.drawingEngine.canvas.width,
-                height: this.drawingEngine.canvas.height,
-                pageHeight: this.drawingEngine.PAGE_HEIGHT
-            },
-            nextId: this.drawingEngine.idGenerator.nextId
-        };
-        FileManager.exportToJson(data);
+        FileManager.exportToJson(this.drawingEngine.getState());
     }
 
     async importFromJson(file) {
-        const data = await FileManager.importFromJson(file);
-        
-        this.drawingEngine.drawnObjects = data.drawnObjects || [];
-        this.drawingEngine.canvas.width = (data.canvas && data.canvas.width) || this.drawingEngine.canvas.width;
-        this.drawingEngine.canvas.height = (data.canvas && data.canvas.height) || this.drawingEngine.canvas.height;
-        this.drawingEngine.PAGE_HEIGHT = (data.canvas && data.canvas.pageHeight) || this.drawingEngine.PAGE_HEIGHT || this.drawingEngine.previewCanvas.height;
-        this.drawingEngine.idGenerator.setNext(data.nextId || (Math.max(0, ...this.drawingEngine.drawnObjects.map(o => o.id || 0)) + 1));
-        
-        this.drawingEngine.viewOffsetX = 0;
-        this.drawingEngine.viewOffsetY = 0;
-        try {
-            this.drawingEngine.setZoom(1);
-        } catch (err) {
-            // Fallback to direct assignment if setZoom is unavailable for some reason
-            this.drawingEngine.viewScale = 1;
-            this.drawingEngine.updateZoomLabel();
-        }
-        this.drawingEngine.selectedIds.clear();
-        
-        this.historyManager.pushHistory(this.drawingEngine.getState());
-        this.drawingEngine.redrawAll();
+        if (this.workspace) return this.workspace.openFile(file);
+        throw new Error('Lecture storage is not ready.');
     }
 
     /* ==========================================================================
@@ -1362,18 +1345,7 @@ class NotesApp {
     /* ==========================================================================
        Auto-save and State Persistence
        ========================================================================== */
-    loadAutosave() {
-        const state = this.historyManager.loadAutosave();
-        if (state) {
-            this.drawingEngine.setState(state);
-            this.drawingEngine.redrawAll();
-        }
-        
-        // Initial history snapshot
-        setTimeout(() => {
-            this.historyManager.pushHistory(this.drawingEngine.getState());
-        }, 0);
-    }
+
 }
 
 // Initialize the application

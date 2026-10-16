@@ -5,6 +5,7 @@
 class DrawingEngine {
     constructor() {
         this.drawnObjects = [];
+        this.pageCount = 2;
         this.selectedIds = new Set();
         this.currentPath = null;
         this.idGenerator = new IdGenerator();
@@ -103,6 +104,9 @@ class DrawingEngine {
         // If a fill would change more than this fraction, ask the user to confirm.
         this.floodFillConfirmFraction = 0.25; // 25% by default
     }
+
+    get documentWidth() { return this.A4_WIDTH + 2 * this.PAGE_MARGIN; }
+    get documentHeight() { return this.PAGE_MARGIN + this.pageCount * (this.A4_HEIGHT + this.PAGE_SPACING); }
 
     // Try to detect if the current path is essentially a straight line.
     // If yes, convert internal state so the UI can enter "line edit mode":
@@ -212,6 +216,8 @@ class DrawingEngine {
         // Set canvas width to container width, but use A4 height for pages
         this.previewCanvas.width = actualWidth;
         this.previewCanvas.height = actualHeight;
+        this.canvas.width = actualWidth; this.canvas.height = actualHeight;
+        this.canvas.style.width = actualWidth + "px"; this.canvas.style.height = actualHeight + "px";
 
         // Set preview canvas display size to match container (CSS pixels)
         this.previewCanvas.style.width = actualWidth + 'px';
@@ -440,7 +446,7 @@ class DrawingEngine {
         }
 
         // Handle speech objects
-        if (obj.type === 'speech') {
+        if (obj.type === 'speech' || obj.type === 'text') {
             ctx.save();
             ctx.fillStyle = obj.color || '#0066cc';
             ctx.font = `${obj.fontSize || 14}px sans-serif`;
@@ -469,6 +475,7 @@ class DrawingEngine {
             }
             ctx.fillText(line, obj.x, y);
             ctx.restore();
+            ctx.restore();
             return;
         }
 
@@ -486,8 +493,8 @@ class DrawingEngine {
             // Fix re-hydration: check if obj.img is a real Image instance and has a valid src
             if (!(obj.img instanceof Image) || !obj.img.src) {
                 obj.img = new Image();
-                obj.img.src = obj.dataUrl;
                 obj.img.onload = () => this.redrawAll();
+                obj.img.src = obj.dataUrl;
             }
             if (obj.img.complete && obj.img.naturalWidth > 0) {
                 const bounds = GeometryUtils.objectBounds(obj);
@@ -662,7 +669,15 @@ class DrawingEngine {
         this.drawPages();
 
         // Draw all objects
-        this.drawnObjects.forEach(obj => this.drawObject(this.ctx, obj));
+        const right = this.viewOffsetX + this.canvas.width / this.viewScale;
+        const bottom = this.viewOffsetY + this.canvas.height / this.viewScale;
+        for (const obj of this.drawnObjects) {
+            if (this.replayTime != null && !obj.slide && obj.timestamp > this.replayTime) continue;
+            const b = GeometryUtils.getTransformedBounds(obj);
+            const pad = Math.max(10, obj.size || 0);
+            if (b.maxX + pad >= this.viewOffsetX && b.minX - pad <= right &&
+                b.maxY + pad >= this.viewOffsetY && b.minY - pad <= bottom) this.drawObject(this.ctx, obj);
+        }
 
         // Draw overlay (selection, marquee, etc.)
         this.drawOverlay();
@@ -670,9 +685,11 @@ class DrawingEngine {
 
     drawPages() {
         const totalCanvasHeight = this.canvas.height / this.viewScale + this.viewOffsetY;
-        const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
+        const numPages = this.pageCount;
 
-        for (let i = 0; i < numPages; i++) {
+        const first = Math.max(0, Math.floor((this.viewOffsetY - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING)));
+        const last = Math.min(numPages, Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING)));
+        for (let i = first; i < last; i++) {
             const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
             const pageX = this.PAGE_MARGIN;
 
@@ -717,7 +734,7 @@ class DrawingEngine {
         );
 
         const totalCanvasHeight = this.canvas.height / this.viewScale + this.viewOffsetY;
-        const numPages = Math.ceil((totalCanvasHeight - this.PAGE_MARGIN) / (this.A4_HEIGHT + this.PAGE_SPACING));
+        const numPages = this.pageCount;
         for (let i = 0; i < numPages; i++) {
             const pageY = this.PAGE_MARGIN + i * (this.A4_HEIGHT + this.PAGE_SPACING);
             const pageX = this.PAGE_MARGIN;
@@ -1044,9 +1061,9 @@ class DrawingEngine {
 
         // Constrain panning to valid ranges (same logic as in updatePanning)
         this.viewOffsetX = Math.max(0, Math.min(this.viewOffsetX,
-            Math.max(0, this.canvas.width - this.previewCanvas.width / this.viewScale)));
+            Math.max(0, this.documentWidth - this.previewCanvas.width / this.viewScale)));
         this.viewOffsetY = Math.max(0, Math.min(this.viewOffsetY,
-            Math.max(0, this.canvas.height - this.previewCanvas.height / this.viewScale)));
+            Math.max(0, this.documentHeight - this.previewCanvas.height / this.viewScale)));
 
         this.updateZoomLabel();
         this.redrawAll();
@@ -1096,9 +1113,9 @@ class DrawingEngine {
 
         // Constrain panning to valid ranges (same logic as in updatePanning)
         this.viewOffsetX = Math.max(0, Math.min(this.viewOffsetX,
-            Math.max(0, this.canvas.width - this.previewCanvas.width / this.viewScale)));
+            Math.max(0, this.documentWidth - this.previewCanvas.width / this.viewScale)));
         this.viewOffsetY = Math.max(0, Math.min(this.viewOffsetY,
-            Math.max(0, this.canvas.height - this.previewCanvas.height / this.viewScale)));
+            Math.max(0, this.documentHeight - this.previewCanvas.height / this.viewScale)));
 
         this.updateZoomLabel();
         this.redrawAll();
@@ -1108,7 +1125,7 @@ class DrawingEngine {
        Page Management
        ========================================================================== */
     addPage() {
-        this.canvas.height += this.A4_HEIGHT + this.PAGE_SPACING;
+        this.pageCount++;
         this.redrawAll();
     }
 
@@ -1489,6 +1506,12 @@ class DrawingEngine {
     getState() {
         return {
             drawnObjects: this.drawnObjects,
+            lecture: this.lecture,
+            pageCount: this.pageCount,
+            pageWidth: this.A4_WIDTH,
+            pageAspectHeight: this.A4_HEIGHT,
+            backgroundType: this.backgroundType,
+            patternColor: this.patternColor,
             viewOffsetX: this.viewOffsetX,
             viewOffsetY: this.viewOffsetY,
             viewScale: this.viewScale,
@@ -1502,11 +1525,16 @@ class DrawingEngine {
 
     setState(state) {
         this.drawnObjects = state.drawnObjects || [];
+        this.lecture = state.lecture;
+        this.pageCount = state.pageCount || 2;
+        this.A4_WIDTH = state.pageWidth || this.A4_WIDTH;
+        this.A4_HEIGHT = state.pageAspectHeight || this.A4_HEIGHT;
+        this.backgroundType = state.backgroundType || 'white';
+        this.patternColor = state.patternColor || '#e8e8e8';
         this.viewOffsetX = state.viewOffsetX || 0;
         this.viewOffsetY = state.viewOffsetY || 0;
         this.viewScale = state.viewScale || 1;
-        this.canvas.width = state.canvasWidth || this.A4_WIDTH;
-        this.canvas.height = state.canvasHeight || (this.A4_HEIGHT * 2);
+
         this.PAGE_HEIGHT = state.pageHeight || this.A4_HEIGHT;
         this.idGenerator.setNext(state.nextId || this.idGenerator.nextId);
         this.lastTimestampTime = state.lastTimestampTime || 0;
@@ -1523,8 +1551,7 @@ class DrawingEngine {
         this.lastTimestampTime = 0;
 
         // Reset to A4 dimensions with 2 pages
-        this.canvas.width = this.A4_WIDTH;
-        this.canvas.height = this.A4_HEIGHT * 2;
+        this.pageCount = 2;
 
         this.updateZoomLabel();
     }

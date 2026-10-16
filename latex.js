@@ -174,7 +174,7 @@ class LatexRenderer {
        LaTeX Object Rendering
        ========================================================================== */
     renderLatexObject(obj) {
-        if (obj.isRendering) return;
+        if (obj.isRendering || !window.MathJax?.startup?.promise) return;
 
         const latexText = obj.latex.trim()
             .replace(/^\$\$|\$\$$/g, '')
@@ -327,7 +327,10 @@ class LatexRenderer {
             startY: bounds.minY,
             endX: bounds.maxX,
             endY: bounds.maxY,
-            transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 }
+            transform: { tx: 0, ty: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+            sourceStrokes: drawingEngine.drawnObjects
+                .filter(o => this.lastConversionMeta.selection?.has(o.id))
+                .map(o => window.DocumentCodec.packObject(o))
         };
 
         const oldIds = this.lastConversionMeta.selection ? Array.from(this.lastConversionMeta.selection) : [];
