@@ -6,7 +6,7 @@
 window.NotesApp = {
     VERSION: '2.1',
     GEMINI_API_KEY: localStorage.getItem('gemini_api_key') || '',
-    GEMINI_MODEL: localStorage.getItem('gemini_model') || '',
+    GEMINI_MODEL: localStorage.getItem('gemini_model') || 'gemini-flash-lite-latest',
     MIN_ZOOM: 0.25,
     MAX_ZOOM: 3,
     ZOOM_STEP: 0.1,

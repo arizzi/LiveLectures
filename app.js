@@ -2,6 +2,10 @@
    Notes App v2.1 - Main Application
    ========================================================================== */
 
+// Capture this while the classic script is executing; currentScript is null
+// once initialization runs. Cross-origin previews cannot resolve relative imports.
+const notesAppScriptURL = document.currentScript?.src || document.baseURI;
+
 class NotesApp {
     constructor() {
         this.drawingEngine = null;
@@ -34,12 +38,15 @@ class NotesApp {
         this.setupSidebar();
         this.drawingEngine.previewCanvas.style.pointerEvents = 'none';
         try {
-            const { LectureWorkspace } = await import('./features/workspace.mjs');
+            if (new URL(notesAppScriptURL).protocol === 'file:') {
+                throw new Error('Open this app through a web server (for local use, run python3 -m http.server 8000 and open http://localhost:8000)');
+            }
+            const { LectureWorkspace } = await import(new URL('./features/workspace.mjs', notesAppScriptURL).href);
             this.workspace = new LectureWorkspace(this);
             await this.workspace.start();
         } catch (error) {
             console.error('Lecture workspace failed', error);
-            const notice = document.createElement('p'); notice.textContent = 'Local storage unavailable: ' + error.message + '. Export notes before closing.';
+            const notice = document.createElement('p'); notice.textContent = 'Lecture workspace unavailable: ' + error.message + '. Export notes before closing.';
             notice.setAttribute('role', 'alert'); document.querySelector('.toolbar').append(notice);
         } finally { this.drawingEngine.previewCanvas.style.pointerEvents = ''; }
     // Setup Progressive Web App helpers (service worker + install flow)
@@ -270,6 +277,9 @@ class NotesApp {
     }
 
     async registerServiceWorker() {
+        // Sandboxed previews have an opaque origin even when their assets use HTTPS.
+        if (!window.isSecureContext || !['http:', 'https:'].includes(window.location.protocol) ||
+            window.origin === 'null') return;
         try {
             const reg = await navigator.serviceWorker.register('sw.js');
             console.log('Service worker registered with scope:', reg.scope);
